@@ -64,7 +64,7 @@ static bool handle_dqform(uint32_t insn, unsigned long *gprs,
 	if (PPC_RA(insn) != 0)
 		*addr = gprs[PPC_RA(insn)];
 
-	*addr += PPC_DQ(insn);
+	*addr += PPC_DQ(insn) << 4;
 
 	return true;
 }
@@ -75,7 +75,7 @@ static bool handle_dsform(uint32_t insn, unsigned long *gprs,
 	if (PPC_RA(insn) != 0)
 		*addr = gprs[PPC_RA(insn)];
 
-	*addr += PPC_DS(insn);
+	*addr += PPC_DS(insn) << 2;
 
 	return true;
 }
