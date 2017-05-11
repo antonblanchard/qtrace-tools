@@ -445,6 +445,7 @@ void print_insn(uint32_t *pc, uint32_t insn, pid_t pid)
 			perror("ptrace");
 			exit(1);
 		}
+		ptrace(PTRACE_DETACH, pid, 0, 0);
 		exit(0);
 	}
 }
