@@ -591,6 +591,7 @@ void usage(void)
 {
 	fprintf(stderr, "Usage: ptracer [OPTION] PROG [ARGS]\n");
 	fprintf(stderr, "\t-o logfile	(required)\n");
+	fprintf(stderr, "\t-c		trace after first fork/vfork/clone\n");
 	fprintf(stderr, "\t-p pid	pid to attach to\n");
 	fprintf(stderr, "\t-n nr_insns	Number of instructions to trace\n");
 	fprintf(stderr, "\t-s nr_insns	Number of instructions to skip\n");
@@ -604,13 +605,18 @@ int main(int argc, char *argv[])
 	uint32_t *pc;
 	uint32_t insn;
 	static bool initialized = false;
+	static bool trace_forked_child = false;
 
 	while (1) {
-		signed char c = getopt(argc, argv, "+fo:p:n:s:qh");
+		signed char c = getopt(argc, argv, "+cfo:p:n:s:qh");
 		if (c < 0)
 			break;
 
 		switch (c) {
+		case 'c':
+			trace_forked_child = true;
+			break;
+
 #if 0
 		case 'f':
 			follow_fork = true;
@@ -688,7 +694,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	while (1) {
+	if (trace_forked_child) {
 		pid_t pid;
 		int status;
 
@@ -697,6 +703,37 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "Waiting on unknown PID %d, expected %d\n", pid, child_pid);
 			perror("waitpid");
 			exit(1);
+		}
+
+		if (ptrace(PTRACE_SETOPTIONS, child_pid, 0,
+			   PTRACE_O_TRACECLONE|PTRACE_O_TRACEFORK|
+			   PTRACE_O_TRACEVFORK) == -1) {
+			perror("ptrace");
+			exit(1);
+		}
+
+		if (ptrace(PTRACE_CONT, child_pid, 0, 0) == -1) {
+			perror("ptrace");
+			exit(1);
+		}
+	}
+
+	while (1) {
+		pid_t pid;
+		int status;
+
+		if (trace_forked_child) {
+			/* Ignore child_pid events */
+			do {
+				pid = waitpid(-1, &status, 0);
+			} while (pid == child_pid);
+		} else {
+			pid = waitpid(child_pid, &status, 0);
+			if (pid != child_pid) {
+				fprintf(stderr, "Waiting on unknown PID %d, expected %d\n", pid, child_pid);
+				perror("waitpid");
+				exit(1);
+			}
 		}
 
 		/* The child exited */
