@@ -1,3 +1,4 @@
+CFLAGS=-g -Wall -O2
 LDLIBS=-lbfd -lopcodes
 
 all: ptracer

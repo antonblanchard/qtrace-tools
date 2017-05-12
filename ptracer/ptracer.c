@@ -513,7 +513,7 @@ static bool step_over_atomic(pid_t pid, uint32_t *p)
 	}
 
 	int status;
-	waitpid(pid, &status, 0);
+	waitpid(pid, &status, __WALL);
 
 	pc = read_pc(pid);
 
@@ -694,7 +694,7 @@ int main(int argc, char *argv[])
 		pid_t pid;
 		int status;
 
-		pid = waitpid(child_pid, &status, 0);
+		pid = waitpid(child_pid, &status, __WALL);
 		if (pid != child_pid) {
 			fprintf(stderr, "Waiting on unknown PID %d, expected %d\n", pid, child_pid);
 			perror("waitpid");
@@ -721,10 +721,10 @@ int main(int argc, char *argv[])
 		if (trace_forked_child) {
 			/* Ignore child_pid events */
 			do {
-				pid = waitpid(-1, &status, 0);
+				pid = waitpid(-1, &status, __WALL);
 			} while (pid == child_pid);
 		} else {
-			pid = waitpid(child_pid, &status, 0);
+			pid = waitpid(child_pid, &status, __WALL);
 			if (pid != child_pid) {
 				fprintf(stderr, "Waiting on unknown PID %d, expected %d\n", pid, child_pid);
 				perror("waitpid");
