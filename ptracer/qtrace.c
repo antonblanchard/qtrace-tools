@@ -65,8 +65,12 @@ void qtrace_open(char *filename)
 	}
 }
 
+static bool handle_branch(uint32_t insn, unsigned long insn_addr);
+
 void qtrace_close(void)
 {
+	/* If the previous instruction was a branch, write it out. */
+	handle_branch(0, 0);
 	close(fd);
 }
 
@@ -111,8 +115,16 @@ static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 		uint16_t flags = QTRACE_NODE_PRESENT | QTRACE_TERMINATION_PRESENT;
 		uint32_t t32;
 		uint64_t t64;
+		bool iar_change = false;
 
-		if ((prev_branch_addr + 4) != insn_addr) 
+		/*
+		 * A zero instruction is used to write out any previous branch
+		 * before closing the qtrace file.
+		 */
+		if (insn && ((prev_branch_addr + 4) != insn_addr))
+			iar_change = true;
+
+		if (iar_change)
 			flags |= (QTRACE_IAR_CHANGE_PRESENT | QTRACE_IAR_PRESENT);
 
 		t32 = cpu_to_be32(prev_branch_insn);
@@ -139,7 +151,7 @@ static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 
 		assert(write(fd, &t8, sizeof(t8)) == sizeof(t8));
 
-		if ((prev_branch_addr + 4) != insn_addr) {
+		if (iar_change) {
 			t64 = cpu_to_be64(insn_addr);
 			assert(write(fd, &t64, sizeof(t64)) == sizeof(t64));
 		}

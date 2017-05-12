@@ -446,6 +446,7 @@ void print_insn(uint32_t *pc, uint32_t insn, pid_t pid)
 			exit(1);
 		}
 		ptrace(PTRACE_DETACH, pid, 0, 0);
+		qtrace_close();
 		exit(0);
 	}
 }
@@ -699,8 +700,10 @@ int main(int argc, char *argv[])
 		}
 
 		/* The child exited */
-		if (WIFEXITED(status))
+		if (WIFEXITED(status)) {
+			qtrace_close();
 			exit(0);
+		}
 
 		if (!WIFSTOPPED(status)) {
 			fprintf(stderr, "Unknown issue, waitpid returned 0x%x\n", status);
