@@ -469,8 +469,10 @@ static bool step_over_atomic(pid_t pid, uint32_t *p)
 
 		if (is_branch(insn)) {
 			/* Too many branches? */
-			if (b == (MAX_BREAKPOINTS-1))
+			if (b == (MAX_BREAKPOINTS-1)) {
+				fprintf(stderr, "step_over_atomic() failed at %p, too many breakpoints\n", p);
 				return false;
+			}
 
 			breakpoints[b++].addr = branch_target(insn, p);
 		}
@@ -479,8 +481,10 @@ static bool step_over_atomic(pid_t pid, uint32_t *p)
 	}
 
 	/* We didn't find the stcx */
-	if (!is_stcx(insn))
+	if (!is_stcx(insn)) {
+		fprintf(stderr, "step_over_atomic() failed at %p, stcx not found\n", p);
 		return false;
+	}
 
 	/* Add breakpoint after stcx */
 	p++;
