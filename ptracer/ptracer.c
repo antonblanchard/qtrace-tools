@@ -171,6 +171,7 @@ static inline uint32_t *branch_target(uint32_t insn, uint32_t *addr)
 	return (uint32_t *)target;
 }
 
+/* This includes the breakpoint at the termination of the larx/stcx sequence */
 #define MAX_BREAKPOINTS		8
 #define MAX_LARX_STCX_GAP	32
 
@@ -467,11 +468,11 @@ static bool step_over_atomic(pid_t pid, uint32_t *p)
 			break;
 
 		if (is_branch(insn)) {
-			breakpoints[b++].addr = branch_target(insn, p);
-
 			/* Too many branches? */
 			if (b == (MAX_BREAKPOINTS-1))
 				return false;
+
+			breakpoints[b++].addr = branch_target(insn, p);
 		}
 
 		p++;
