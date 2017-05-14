@@ -519,13 +519,19 @@ static bool step_over_atomic(pid_t pid, uint32_t *p)
 
 	/* XXX FIXME This assumes the larx/stcx passed */
 	while (start < pc) {
-		uint32_t insn;
 		insn = read_insn(pid, start);
 		print_insn(start, insn, pid);
 		start++;
 	}
 
 	remove_breakpoints(pid, breakpoints, b);
+
+	/*
+	 * Trace the instruction we trapped on, now we've removed the
+	 * breakpoint
+	 */
+	insn = read_insn(pid, start);
+	print_insn(pc, insn, pid);
 
 	if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) == -1) {
 		perror("ptrace");
