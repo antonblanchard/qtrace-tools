@@ -6,7 +6,11 @@
  * as published by the Free Software Foundation; either version
  * 2 of the License, or (at your option) any later version.
  */
+#ifndef __BRANCH_H__
+#define __BRANCH_H__
+
 #include <stdbool.h>
+#include <stdint.h>
 
 static inline bool is_conditional_branch(uint32_t insn)
 {
@@ -23,7 +27,6 @@ static inline bool is_conditional_branch(uint32_t insn)
 		case 528:	/* bcctr */
 		case 560:	/* bctar */
 			return true;
-			break;
 		}
 	}
 
@@ -47,7 +50,6 @@ static inline bool is_unconditional_branch(uint32_t insn)
 		case 274:	/* hrfid */
 		case 82:	/* rfscv */
 			return true;
-			break;
 		}
 	}
 
@@ -61,3 +63,5 @@ static inline bool is_branch(uint32_t insn)
 
 	return false;
 }
+
+#endif

@@ -90,19 +90,16 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 135:	/* stvebx */
 		*size = 1;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 39:	/* lvehx */
 	case 167:	/* stvehx */
 		*size = 2;
 		return handle_xform_masked(insn, gprs, ~0x1, addr);
-		break;
 
 	case 71:	/* lvewx */
 	case 199:	/* stvewx */
 		*size = 4;
 		return handle_xform_masked(insn, gprs, ~0x3, addr);
-		break;
 
 	case 103:	/* lvx */
 	case 231:	/* stvx */
@@ -110,7 +107,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 487:	/* stvxl */
 		*size = 16;
 		return handle_xform_masked(insn, gprs, ~0xf, addr);
-		break;
 
 	case 269:	/* lxvl */
 	case 301:	/* lxvll */
@@ -121,19 +117,13 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 
 	case 781:	/* lxsibzx */
 	case 909:	/* stxsibx */
-	case 876:	/* lxvb16x */
-	case 1004:	/* stxvb16x */
 		*size = 1;
 		return handle_xform(insn, gprs, addr);
-		break;
 
-	case 812:	/* lxvh8x */
-	case 940:	/* stxvh8x */
 	case 813:	/* lxsihzx */
 	case 941:	/* stxsihx */
 		*size = 2;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 12:	/* lxsiwzx */
 	case 76:	/* lxsiwax */
@@ -143,24 +133,25 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 652:	/* stxsspx */
 		*size = 4;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 332:	/* lxvdsx */
 	case 588:	/* lxsdx */
 	case 716:	/* stxsdx */
 		*size = 8;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 268:	/* lxvx */ /* XXX ?? PPC ISA spec issue? */
 	case 396:	/* stxvx */
 	case 780:	/* lxvw4x */
 	case 908:	/* stxvw4x */
+	case 812:	/* lxvh8x */
+	case 940:	/* stxvh8x */
 	case 844:	/* lxvd2x */
 	case 972:	/* stxvd2x */
+	case 876:	/* lxvb16x */
+	case 1004:	/* stxvb16x */
 		*size = 16;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 52:	/* lbarx */
 	case 694:	/* stbcx. */
@@ -172,7 +163,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 981:	/* stbcix */
 		*size = 1;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 116:	/* lharx */
 	case 726:	/* sthcx. */
@@ -188,7 +178,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 949:	/* sthcix */
 		*size = 2;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 20:	/* lwarx */
 	case 150:	/* stwcx. */
@@ -204,7 +193,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 917:	/* stwcix */
 		*size = 4;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 84:	/* ldarx */
 	case 214:	/* stdcx. */
@@ -219,13 +207,11 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 309:	/* ldmx */
 		*size = 8;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 276:	/* lqarx */
 	case 182:	/* stqcx. */
 		*size = 16;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 535:	/* lfsx */
 	case 567:	/* lfsux */
@@ -236,7 +222,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 983:	/* stfiwx */
 		*size = 4;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 599:	/* lfdx */
 	case 631:	/* lfdux */
@@ -244,13 +229,11 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 759:	/* stfdux */
 		*size = 8;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 791:	/* lfdpx */
 	case 919:	/* stfdpx */
 		*size = 16;
 		return handle_xform(insn, gprs, addr);
-		break;
 
 	case 22:	/* icbt */
 	case 54:	/* dcbst */
@@ -261,7 +244,6 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 1014:	/* dcbz */
 		*size = CACHELINE_SIZE;
 		return handle_xform_masked(insn, gprs, ~(CACHELINE_SIZE-1), addr);
-		break;
 
 	case 533:	/* lswx */
 	case 661:	/* stswx */
@@ -269,22 +251,24 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 725:	/* stswi */
 		/* XXX FIXME */
 		assert(0);
+		break;
 
 	case 582:	/* lwat */
 	case 710:	/* stwat */
 		/* XXX FIXME */
 		assert(0);
+		break;
 
 	case 614:	/* ldat */
 	case 742:	/* stdat */
 		/* XXX FIXME */
 		assert(0);
+		break;
 
 	case 774:	/* copy */
 	case 902:	/* paste */
 		*size = CACHELINE_SIZE;
 		return handle_xform(insn, gprs, addr);
-		break;
 	}
 
 	return false;
@@ -299,17 +283,14 @@ static bool extended_57(uint32_t insn, unsigned long *gprs,
 	case 0:		/* lfdp */
 		*size = 16;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 2:		/* lxsd */
 		*size = 8;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 3:		/* lxssp */
 		*size = 4;
 		return handle_dsform(insn, gprs, addr);
-		break;
 	}
 
 	return false;
@@ -325,12 +306,10 @@ static bool extended_58(uint32_t insn, unsigned long *gprs,
 	case 1:		/* ldu */
 		*size = 8;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 2:		/* lwa */
 		*size = 4;
 		return handle_dsform(insn, gprs, addr);
-		break;
 	}
 
 	return false;
@@ -347,25 +326,21 @@ static bool extended_61(uint32_t insn, unsigned long *gprs,
 	case 4:		/* stfdp */
 		*size = 16;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 1:		/* lxv */
 	case 5:		/* stxv */
 		*size = 16;
 		return handle_dqform(insn, gprs, addr);
-		break;
 
 	case 2:		/* stxsd */
 	case 6:		/* stxsd */
 		*size = 8;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 3:		/* stxssp */
 	case 7:		/* stxssp */
 		*size = 4;
 		return handle_dsform(insn, gprs, addr);
-		break;
 	}
 
 	return false;
@@ -381,12 +356,10 @@ static bool extended_62(uint32_t insn, unsigned long *gprs,
 	case 1:		/* stdu */
 		*size = 8;
 		return handle_dsform(insn, gprs, addr);
-		break;
 
 	case 2:		/* stq */
 		*size = 16;
 		return handle_dsform(insn, gprs, addr);
-		break;
 	}
 
 	return false;
@@ -397,26 +370,24 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 {
 	int opcode = PPC_OPC(insn);
 
+	*addr = 0;
+	*size = 0;
+
 	switch (opcode) {
 	case 31:
 		return extended_31(insn, gprs, addr, size);
-		break;
 
 	case 57:
 		return extended_57(insn, gprs, addr, size);
-		break;
 
 	case 58:
 		return extended_58(insn, gprs, addr, size);
-		break;
 
 	case 61:
 		return extended_61(insn, gprs, addr, size);
-		break;
 
 	case 62:
 		return extended_62(insn, gprs, addr, size);
-		break;
 
 	case 32:	/* lwz */
 	case 33:	/* lwzu */
@@ -424,7 +395,6 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 	case 37:	/* stwu */
 		*size = 4;
 		return handle_dform(insn, gprs, addr);
-		break;
 
 	case 34:	/* lbz */
 	case 35:	/* lbzu */
@@ -432,7 +402,6 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 	case 39:	/* stbu */
 		*size = 1;
 		return handle_dform(insn, gprs, addr);
-		break;
 
 	case 40:	/* lhz */
 	case 41:	/* lhzu */
@@ -442,7 +411,6 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 	case 45:	/* sthu */
 		*size = 2;
 		return handle_dform(insn, gprs, addr);
-		break;
 
 	case 48:	/* lfs */
 	case 49:	/* lfsu */
@@ -450,7 +418,6 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 	case 53:	/* stfsu */
 		*size = 4;
 		return handle_dform(insn, gprs, addr);
-		break;
 
 	case 50:	/* lfd */
 	case 51:	/* lfdu */
@@ -458,18 +425,15 @@ bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 	case 55:	/* stfdu */
 		*size = 8;
 		return handle_dform(insn, gprs, addr);
-		break;
 
 	case 56:	/* lq */
 		*size = 16;
 		return handle_dqform(insn, gprs, addr);
-		break;
 
 	case 46:	/* lmw */
 	case 47:	/* stmw */
 		*size = 4 * (32 - PPC_RT(insn));
 		return handle_dform(insn, gprs, addr);
-		break;
 	}
 
 	return false;

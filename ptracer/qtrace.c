@@ -84,31 +84,39 @@ static void write_header(unsigned long addr)
 	uint16_t flags;
 	uint32_t t32;
 	uint64_t t64;
+	ssize_t ret;
 
 	/* Header is identified by a zero instruction */
 	t32 = 0;
-	assert(write(fd, &t32, sizeof(t32)) == sizeof(t32));
+	ret = write(fd, &t32, sizeof(t32));
+	assert(ret == sizeof(t32));
 
 	flags = cpu_to_be16(QTRACE_EXTENDED_FLAGS_PRESENT);
-	assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+	ret = write(fd, &flags, sizeof(flags));
+	assert(ret == sizeof(flags));
 
 	flags = cpu_to_be16(QTRACE_FILE_HEADER_PRESENT);
-	assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+	ret = write(fd, &flags, sizeof(flags));
+	assert(ret == sizeof(flags));
 
 	flags = cpu_to_be16(QTRACE_HDR_VERSION_NUMBER_PRESENT | QTRACE_HDR_IAR_PRESENT);
-	assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+	ret = write(fd, &flags, sizeof(flags));
+	assert(ret == sizeof(flags));
 
 	t32 = cpu_to_be32(0); /* XXX FIXME */
-	assert(write(fd, &t32, sizeof(t32)) == sizeof(t32));
+	ret = write(fd, &t32, sizeof(t32));
+	assert(ret == sizeof(t32));
 
 	t64 = cpu_to_be64(addr);
-	assert(write(fd, &t64, sizeof(t64)) == sizeof(t64));
+	ret = write(fd, &t64, sizeof(t64));
+	assert(ret == sizeof(t64));
 }
 
 static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 {
 	static uint32_t prev_branch_insn = 0;
 	static unsigned long prev_branch_addr = 0;
+	ssize_t ret;
 
 	if (prev_branch_insn) {
 		uint8_t t8;
@@ -128,18 +136,22 @@ static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 			flags |= (QTRACE_IAR_CHANGE_PRESENT | QTRACE_IAR_PRESENT);
 
 		t32 = cpu_to_be32(prev_branch_insn);
-		assert(write(fd, &t32, sizeof(t32)) == sizeof(t32));
+		ret = write(fd, &t32, sizeof(t32));
+		assert(ret == sizeof(t32));
 
 		flags = cpu_to_be16(flags);
-		assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+		ret = write(fd, &flags, sizeof(flags));
+		assert(ret == sizeof(flags));
 
 		/* node */
 		t8 = 0;
-		assert(write(fd, &t8, sizeof(t8)) == sizeof(t8));
+		ret = write(fd, &t8, sizeof(t8));
+		assert(ret == sizeof(t8));
 
 		/* termination node */
 		t8 = 0;
-		assert(write(fd, &t8, sizeof(t8)) == sizeof(t8));
+		ret = write(fd, &t8, sizeof(t8));
+		assert(ret == sizeof(t8));
 
 		/* termination code */
 		t8 = 0;
@@ -149,11 +161,13 @@ static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 		if (is_unconditional_branch(prev_branch_insn))
 			t8 = QTRACE_UNCONDITIONAL_BRANCH;
 
-		assert(write(fd, &t8, sizeof(t8)) == sizeof(t8));
+		ret = write(fd, &t8, sizeof(t8));
+		assert(ret == sizeof(t8));
 
 		if (iar_change) {
 			t64 = cpu_to_be64(insn_addr);
-			assert(write(fd, &t64, sizeof(t64)) == sizeof(t64));
+			ret = write(fd, &t64, sizeof(t64));
+			assert(ret == sizeof(t64));
 		}
 	}
 
@@ -161,16 +175,17 @@ static bool handle_branch(uint32_t insn, unsigned long insn_addr)
 		prev_branch_insn = insn;
 		prev_branch_addr = insn_addr;
 		return true;
-	} else {
-		prev_branch_insn = 0;
-		return false;
 	}
+
+	prev_branch_insn = 0;
+	return false;
 }
 
 void qtrace_add_record(uint32_t insn, unsigned long insn_addr)
 {
 	uint16_t flags;
 	uint32_t t32;
+	ssize_t ret;
 
 	if (!header_written) {
 		header_written = true;
@@ -181,17 +196,22 @@ void qtrace_add_record(uint32_t insn, unsigned long insn_addr)
 		return;
 
 	t32 = cpu_to_be32(insn);
-	assert(write(fd, &t32, sizeof(t32)) == sizeof(t32));
+	ret = write(fd, &t32, sizeof(t32));
+	assert(ret == sizeof(t32));
 
 	flags = 0;
-	assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+	ret = write(fd, &flags, sizeof(flags));
+	assert(ret == sizeof(flags));
 }
 
-void qtrace_add_storage_record(uint32_t insn, unsigned long insn_addr, unsigned long storage_addr, unsigned long storage_size)
+void qtrace_add_storage_record(uint32_t insn, unsigned long insn_addr,
+			       unsigned long storage_addr,
+			       unsigned long storage_size)
 {
 	uint16_t flags;
 	uint32_t t32;
 	uint64_t t64;
+	ssize_t ret;
 
 	if (!header_written) {
 		header_written = true;
@@ -201,11 +221,14 @@ void qtrace_add_storage_record(uint32_t insn, unsigned long insn_addr, unsigned 
 	handle_branch(insn, insn_addr);
 
 	t32 = cpu_to_be32(insn);
-	assert(write(fd, &t32, sizeof(t32)) == sizeof(t32));
+	ret = write(fd, &t32, sizeof(t32));
+	assert(ret == sizeof(t32));
 
 	flags = cpu_to_be16(QTRACE_DATA_ADDRESS_PRESENT);
-	assert(write(fd, &flags, sizeof(flags)) == sizeof(flags));
+	ret = write(fd, &flags, sizeof(flags));
+	assert(ret == sizeof(flags));
 
 	t64 = cpu_to_be64(storage_addr);
-	assert(write(fd, &t64, sizeof(t64)) == sizeof(t64));
+	ret = write(fd, &t64, sizeof(t64));
+	assert(ret == sizeof(t64));
 }
