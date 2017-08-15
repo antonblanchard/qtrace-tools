@@ -62,6 +62,25 @@ static void setrlimit_open_files(void)
 	}
 }
 
+static void do_checkpoint(pid_t pid, char *dir)
+{
+	char pidstr[8];
+
+	snprintf(pidstr, sizeof(pidstr)-1, "%d", pid);
+
+	if (ptrace(PTRACE_DETACH, pid, 0, 0) == -1) {
+		perror("do_checkpoint: ptrace(PTRACE_DETACH)");
+		exit(1);
+	}
+
+	if (execlp("sudo", "sudo", "criu", "dump", "-j", "-s", "-t", pidstr,
+		"-D", dir, NULL) == -1) {
+		perror("do_checkpoint: execl");
+	}
+
+	exit(0);
+}
+
 static char *ascii_logfile = NULL;
 static char *qtrace_logfile = NULL;
 static unsigned long nr_insns_skip = 0;
@@ -120,12 +139,13 @@ int main(int argc, char *argv[])
 {
 	pid_t tracing_pid;
 	pid_t child_pid = 0;
+	char *checkpoint_dir = NULL;
 #if 0
 	bool follow_fork = false;
 #endif
 
 	while (1) {
-		signed char c = getopt(argc, argv, "+a:q:p:fn:s:h");
+		signed char c = getopt(argc, argv, "+a:q:p:fn:s:c:h");
 		if (c < 0)
 			break;
 
@@ -153,6 +173,10 @@ int main(int argc, char *argv[])
 
 		case 's':
 			nr_insns_skip = strtol(optarg, NULL, 10);
+			break;
+
+		case 'c':
+			checkpoint_dir = optarg;
 			break;
 
 		default:
@@ -189,7 +213,9 @@ int main(int argc, char *argv[])
 	if (child_pid) {
 		capture_all_threads(child_pid);
 
-		if (!nr_insns_skip)
+		tracing_pid = child_pid;
+
+		if (!nr_insns_skip && (nr_pids > 1))
 			nr_insns_skip = FAST_FORWARD_COUNT;
 	} else {
 		tracing_pid = do_exec(&argv[optind]);
@@ -197,6 +223,9 @@ int main(int argc, char *argv[])
 
 	if (nr_insns_skip)
 		tracing_pid = fast_forward(&nr_insns_skip);
+
+	if (checkpoint_dir)
+		do_checkpoint(tracing_pid, checkpoint_dir);
 
 	if (child_pid)
 		release_all_non_tracing_threads(tracing_pid);
