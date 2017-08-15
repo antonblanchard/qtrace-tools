@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
@@ -86,6 +87,131 @@ static char *qtrace_logfile = NULL;
 static unsigned long nr_insns_skip = 0;
 static unsigned long nr_insns_left = -1UL;
 
+struct register_state {
+	struct pt_regs regs;
+	__int128 vmx_regs[32+2];
+	__int128 vsx_regs[32];
+	unsigned int fpscr;
+};
+static struct register_state prev_state;
+
+static void get_gp_regs(unsigned long pid, struct register_state *state)
+{
+	if (ptrace(PTRACE_GETREGS, pid, NULL, &state->regs)) {
+		perror("get_gp_regs: ptrace(PTRACE_GETREGS)");
+		exit(1);
+	}
+}
+
+static void get_vmx_regs(unsigned long pid, struct register_state *state)
+{
+	if (ptrace(PTRACE_GETVRREGS, pid, NULL, &state->vmx_regs)) {
+		perror("get_gp_regs: ptrace(PTRACE_GETREGS)");
+		exit(1);
+	}
+}
+
+static void get_vsx_regs(unsigned long pid, struct register_state *state)
+{
+	unsigned long i;
+	unsigned long fpr[33];
+	unsigned long vsx[32];
+
+	if (ptrace(PTRACE_GETFPREGS, pid, NULL, &fpr)) {
+		perror("get_gp_regs: ptrace(PTRACE_GETREGS)");
+		exit(1);
+	}
+
+	if (ptrace(PTRACE_GETVSRREGS, pid, NULL, &vsx)) {
+		perror("get_gp_regs: ptrace(PTRACE_GETREGS)");
+		exit(1);
+	}
+
+	for (i = 0; i < 32; i++) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		state->vsx_regs[i] = (((__int128)vsx[i]) << 64) | fpr[i];
+#else
+		state->vsx_regs[i] = (((__int128)fpr[i]) << 64) | vsx[i];
+#endif
+	}
+
+	state->fpscr = fpr[32];
+}
+
+static void get_state(unsigned long pid, struct register_state *state)
+{
+	memset(state, 0xa5, sizeof(*state));
+
+	get_gp_regs(pid, state);
+	get_vmx_regs(pid, state);
+	get_vsx_regs(pid, state);
+}
+
+static void compare32(uint32_t prev, uint32_t cur, char *str)
+{
+	if (prev != cur)
+		fprintf(ascii_fout, "\t%s 0x%08x\n", str, cur);
+}
+
+static void compare64(uint64_t prev, uint64_t cur, char *str)
+{
+	if (prev != cur)
+		fprintf(ascii_fout, "\t%s 0x%016lx\n", str, cur);
+}
+
+static void compare128(__int128 prev, __int128 cur, char *str)
+{
+	if (prev != cur) {
+		fprintf(ascii_fout, "\t%s 0x%016lx%016lx\n", str,
+			(unsigned long)(cur >> 64),
+			(unsigned long)(cur & 0xffffffffffffffffUL));
+	}
+}
+
+static void print_state(unsigned long pid)
+{
+	struct register_state cur_state;
+	unsigned int i;
+	char str[16];
+
+	get_state(pid, &cur_state);
+
+	for (i = 0; i < 32; i++) {
+		sprintf(str, "GPR%02d", i);
+		compare64(prev_state.regs.gpr[i], cur_state.regs.gpr[i], str);
+	}
+
+	for (i = 0; i < 32; i++) {
+		sprintf(str, "VR%02d ", i);
+		compare128(prev_state.vmx_regs[i], cur_state.vmx_regs[i], str);
+	}
+
+	compare32(prev_state.vmx_regs[32], cur_state.vmx_regs[32], "VSCR");
+
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	compare32(prev_state.vmx_regs[33], cur_state.vmx_regs[33], "VRSAVE");
+#else
+	compare32(prev_state.vmx_regs[33] >> 96, cur_state.vmx_regs[33] >> 96,
+		"VRSAVE");
+#endif
+
+	for (i = 0; i < 32; i++) {
+		sprintf(str, "VSR%02d", i);
+		compare128(prev_state.vsx_regs[i], cur_state.vsx_regs[i], str);
+	}
+
+	compare64(prev_state.regs.ctr, cur_state.regs.ctr, "CTR");
+	compare64(prev_state.regs.link, cur_state.regs.link, "LR");
+	compare64(prev_state.regs.xer, cur_state.regs.xer, "XER");
+	compare32(prev_state.regs.ccr, cur_state.regs.ccr, "CR");
+
+	compare64(prev_state.fpscr, cur_state.fpscr, "FPSCR");
+
+	memcpy(&prev_state, &cur_state, sizeof(struct register_state));
+}
+
+static bool register_dump;
+
 static void print_insn(pid_t pid, uint32_t *pc)
 {
 	uint32_t insn;
@@ -104,8 +230,12 @@ static void print_insn(pid_t pid, uint32_t *pc)
 		nr_insns_left--;
 	}
 
-	if (ascii_logfile)
+	if (ascii_logfile) {
+		if (register_dump)
+			print_state(pid);
+
 		ascii_add_record(pid, insn, pc);
+	}
 
 	if (qtrace_logfile) {
 		int ret;
@@ -145,7 +275,7 @@ int main(int argc, char *argv[])
 #endif
 
 	while (1) {
-		signed char c = getopt(argc, argv, "+a:q:p:fn:s:c:h");
+		signed char c = getopt(argc, argv, "+a:q:p:fn:s:rc:h");
 		if (c < 0)
 			break;
 
@@ -169,6 +299,10 @@ int main(int argc, char *argv[])
 
 		case 'n':
 			nr_insns_left = strtol(optarg, NULL, 10);
+			break;
+
+		case 'r':
+			register_dump = true;
 			break;
 
 		case 's':
