@@ -111,7 +111,7 @@ static void destroy_insn_counter(struct pid *pid)
  * The PMU won't stop exactly on the instruction we want, so stop a little
  * early. The main loop will single step the rest for us.
  */
-#define SLACK 100
+#define SLACK 200
 
 /*
  * We count instructions across all threads and choose the first one that
@@ -213,7 +213,14 @@ unsigned long fast_forward(unsigned long *nr_insns)
 		fprintf(stderr, "fast_forward: perf read returned %ld, expected %ld\n", res,
 			sizeof(count));
 	}
-	*nr_insns -= count;
+
+	if (count > *nr_insns) {
+		fprintf(stderr, "WARNING: SLACK needs to be increased");
+		fprintf(stderr, "We asked the PMU to skip %ld instructions but went %Ld\n", *nr_insns, count);
+		*nr_insns = 0;
+	} else {
+		*nr_insns -= count;
+	}
 
 	for (i = 0; i < nr_pids; i++)
 		destroy_insn_counter(&pids[i]);
