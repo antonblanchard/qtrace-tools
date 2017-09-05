@@ -447,10 +447,13 @@ int main(int argc, char *argv[])
 			 * We assume this is a non tracing thread hitting our
 			 * software breakpoint in the single step code.
 			 *
-			 * If the application is using software breakpoints,
-			 * unfortunately this will break them.
+			 * We use an illegal instruction instead of a trap
+			 * because the application might be using traps.
+			 *
+			 * Hopefully they aren't relying on getting SIGILL,
+			 * because we eat them here.
 			 */
-			if (sig == SIGTRAP)
+			if (sig == SIGILL)
 				sig = 0;
 
 			if (ptrace(PTRACE_CONT, pid, 0, sig) == -1) {
@@ -472,6 +475,10 @@ int main(int argc, char *argv[])
 		} else {
 			unsigned int sig = WSTOPSIG(status);
 
+			/*
+			 * XXX: How do we detect a single step SIGTRAP vs
+			 * a SIGTRAP signal delivered to the child?
+			 */
 			if (sig == SIGTRAP)
 				sig = 0;
 

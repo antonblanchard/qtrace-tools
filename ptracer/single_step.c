@@ -41,7 +41,7 @@
 #define BRANCH_MASK 0xfc000000
 #define BC_INSN 0x40000000
 
-#define TRAP_INSN 0x7d821008UL
+#define BREAKPOINT_INSN 0x00b00b00UL
 
 bool is_larx(uint32_t insn)
 {
@@ -110,7 +110,7 @@ static bool insert_one_breakpoint(pid_t pid, struct breakpoint *breakpoint)
 
 	val = read_insn(pid, breakpoint->addr);
 	breakpoint->insn = val;
-	write_insn(pid, breakpoint->addr, TRAP_INSN);
+	write_insn(pid, breakpoint->addr, BREAKPOINT_INSN);
 
 	return true;
 }
@@ -121,7 +121,7 @@ static bool remove_one_breakpoint(pid_t pid, struct breakpoint *breakpoint)
 
 	val = read_insn(pid, breakpoint->addr);
 
-	if (val != TRAP_INSN)
+	if (val != BREAKPOINT_INSN)
 		return false;
 
 	write_insn(pid, breakpoint->addr, breakpoint->insn);
@@ -248,7 +248,7 @@ unsigned long step_over_atomic(pid_t pid, uint32_t *p, callback fn)
 	}
 
 	/* XXX FIXME: We got a signal inside a larx/stcx sequence */
-	if (WSTOPSIG(status) != SIGTRAP) {
+	if (WSTOPSIG(status) != SIGILL) {
 		fprintf(stderr, "%s: received %d signal\n", __func__, WSTOPSIG(status));
 		exit(1);
 	}
