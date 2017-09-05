@@ -237,14 +237,13 @@ void release_all_non_tracing_threads(pid_t tracing_pid)
 {
 	unsigned long i;
 
+	/* XXX We should do something better here */
 	for (i = 0; i < nr_pids; i++) {
 		if (pids[i].pid == tracing_pid)
 			continue;
 
-		if (ptrace(PTRACE_CONT, pids[i].pid, 0, 0)) {
-			perror("release_all_non_tracing_threads: ptrace(PTRACE_CONT)");
-			exit(1);
-		}
+		/* This may fail, so don't detect errors. */
+		ptrace(PTRACE_CONT, pids[i].pid, 0, 0);
 	}
 }
 
