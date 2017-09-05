@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <errno.h>
 #include <stdio.h>
@@ -476,11 +477,23 @@ int main(int argc, char *argv[])
 			unsigned int sig = WSTOPSIG(status);
 
 			/*
-			 * XXX: How do we detect a single step SIGTRAP vs
-			 * a SIGTRAP signal delivered to the child?
+			 * It would be nice if ptrace had a
+			 * PTRACE_O_SINGLESTEP/PTRACE_EVENT_SINGLESTEP option
+			 * so we could work this out without another call.
 			 */
-			if (sig == SIGTRAP)
-				sig = 0;
+			if (sig == SIGTRAP) {
+				siginfo_t siginfo;
+
+				if (ptrace(PTRACE_GETSIGINFO, pid, 0,
+					   &siginfo) == -1) {
+					perror("ptrace");
+					exit(1);
+				}
+
+				if (siginfo.si_code == TRAP_TRACE) {
+					sig = 0;
+				}
+			}
 
 			print_insn(pid, pc);
 
