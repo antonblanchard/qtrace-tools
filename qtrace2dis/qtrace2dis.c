@@ -14,11 +14,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
-#include <bfd.h>
-#include <dis-asm.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#ifdef USE_BFD
+#include <bfd.h>
+#include <dis-asm.h>
+#endif
 
 /* File header flags */
 #define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
@@ -116,6 +119,7 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 	return p - q;
 }
 
+#ifdef USE_BFD
 static asymbol **syms = NULL;
 static long symcount;
 
@@ -268,6 +272,7 @@ void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
 #endif
 	}
 }
+#endif
 
 #ifdef DEBUG
 static void dump(unsigned char *p, unsigned long len)
@@ -351,8 +356,12 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		p += sizeof(uint64_t);
 	}
 
+#ifdef USE_BFD
 	__print_address(*ea);
 	disasm(*ea, &insn, sizeof(insn));
+#else
+	fprintf(stdout, "%p\t0x%x\n", ea, insn);
+#endif
 
 	if (verbose) {
 		if (flags & (QTRACE_DATA_ADDRESS_PRESENT|QTRACE_NODE_PRESENT|
@@ -400,9 +409,11 @@ int main(int argc, char *argv[])
 			break;
 
 		switch (c) {
+#ifdef USE_BFD
 		case 'e':
 			syminit(optarg, "elf64-powerpc");
 			break;
+#endif
 
 		case 'v':
 			verbose++;
