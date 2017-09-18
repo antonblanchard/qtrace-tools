@@ -1,9 +1,16 @@
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
+#ifdef USE_BFD
 #include <bfd.h>
 #include <dis-asm.h>
+#endif
+
+FILE *ascii_fout;
+
+#ifdef USE_BFD
 
 #define MAX_SYMS 256
 
@@ -123,8 +130,6 @@ static void syminit(char *file, unsigned long base_address,
 	nr_sym_tables++;
 }
 
-FILE *ascii_fout;
-
 #define BUFSIZE 2048
 
 static void initialise_mem_map(pid_t pid)
@@ -227,6 +232,7 @@ static void disasm(uint32_t *ea, unsigned int *buf, unsigned long bufsize)
 #endif
 	}
 }
+#endif
 
 void ascii_open(char *filename)
 {
@@ -244,6 +250,7 @@ void ascii_close(void)
 
 void ascii_add_record(pid_t pid, uint32_t insn, uint32_t *insn_addr)
 {
+#ifdef USE_BFD
 	static bool initialized = false;
 
 	if (!initialized) {
@@ -254,4 +261,7 @@ void ascii_add_record(pid_t pid, uint32_t insn, uint32_t *insn_addr)
 	__print_address((bfd_vma)insn_addr);
 	disasm(insn_addr, &insn, sizeof(insn));
 	fprintf(ascii_fout, "\n");
+#else
+	fprintf(ascii_fout, "%p\t0x%x\n", insn_addr, insn);
+#endif
 }

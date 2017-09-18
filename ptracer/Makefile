@@ -1,5 +1,8 @@
 CC=powerpc64le-linux-gnu-gcc
 CFLAGS=-g -Wall -O2
+
+# Is BFD available?
+CFLAGS+=-DUSE_BFD
 LDLIBS=-lbfd -lopcodes
 
 all: ptracer
