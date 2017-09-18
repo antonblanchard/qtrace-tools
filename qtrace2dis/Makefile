@@ -2,6 +2,8 @@ CFLAGS = -g -O2 -Wall
 
 ARCH = $(shell uname -m)
 
+# Is BFD available?
+CFLAGS+=-DUSE_BFD
 ifeq ($(ARCH),ppc64le)
 	LDLIBS=-lbfd -lopcodes
 else
