@@ -26,29 +26,64 @@
 /* File header flags */
 #define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
 #define QTRACE_HDR_IAR_PRESENT				0x2000
+#define QTRACE_HDR_IAR_RPN_PRESENT			0x0800
+#define QTRACE_HDR_IAR_PAGE_SIZE_PRESENT		0x0040
+#define QTRACE_HDR_COMMENT_PRESENT			0x0002
 
-#define HDR_UNUSED_FLAGS	(~(QTRACE_HDR_VERSION_NUMBER_PRESENT|QTRACE_HDR_IAR_PRESENT))
+#define UNHANDLED_HDR_FLAGS	(~(QTRACE_HDR_VERSION_NUMBER_PRESENT|QTRACE_HDR_IAR_PRESENT|QTRACE_HDR_IAR_RPN_PRESENT|QTRACE_HDR_IAR_PAGE_SIZE_PRESENT|QTRACE_HDR_COMMENT_PRESENT))
 
 /* Primary flags */
 #define QTRACE_IAR_CHANGE_PRESENT			0x8000
 #define QTRACE_NODE_PRESENT				0x4000
 #define QTRACE_TERMINATION_PRESENT			0x2000
+#define QTRACE_PROCESSOR_PRESENT			0x1000
 #define QTRACE_DATA_ADDRESS_PRESENT			0x0800
+#define QTRACE_DATA_RPN_PRESENT				0x0200
 #define QTRACE_IAR_PRESENT				0x0040
+#define QTRACE_IAR_RPN_PRESENT				0x0010
+#define QTRACE_REGISTER_TRACE_PRESENT			0x0008
 #define QTRACE_EXTENDED_FLAGS_PRESENT			0x0001
 
-#define UNHANDLED_FLAGS	(~(QTRACE_IAR_CHANGE_PRESENT|QTRACE_NODE_PRESENT|QTRACE_TERMINATION_PRESENT|QTRACE_DATA_ADDRESS_PRESENT|QTRACE_IAR_PRESENT|QTRACE_EXTENDED_FLAGS_PRESENT))
+#define UNHANDLED_FLAGS	(~(QTRACE_IAR_CHANGE_PRESENT|QTRACE_NODE_PRESENT|QTRACE_TERMINATION_PRESENT|QTRACE_PROCESSOR_PRESENT|QTRACE_DATA_ADDRESS_PRESENT|QTRACE_DATA_RPN_PRESENT|QTRACE_IAR_PRESENT|QTRACE_IAR_RPN_PRESENT|QTRACE_REGISTER_TRACE_PRESENT|QTRACE_EXTENDED_FLAGS_PRESENT))
 
 /* First extended flags */
+#define QTRACE_TRACE_ERROR_CODE_PRESENT			0x1000
+#define QTRACE_IAR_PAGE_SIZE_PRESENT			0x0200
+#define QTRACE_DATA_PAGE_SIZE_PRESENT			0x0100
 #define QTRACE_FILE_HEADER_PRESENT			0x0002
+#define QTRACE_EXTENDED_FLAGS2_PRESENT			0x0001
 
-#define UNHANDLED_FLAGS2 (~QTRACE_FILE_HEADER_PRESENT)
+#define UNHANDLED_FLAGS2	(~(QTRACE_TRACE_ERROR_CODE_PRESENT|QTRACE_IAR_PAGE_SIZE_PRESENT|QTRACE_DATA_PAGE_SIZE_PRESENT|QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT))
 
-#define UNHANDLED_FLAGS3				0xffff
+#define IS_RADIX(FLAGS2)	((FLAGS2) & QTRACE_EXTENDED_FLAGS2_PRESENT)
+
+/* Second extended flags */
+#define QTRACE_HOST_XLATE_MODE_DATA			0xC000
+#define QTRACE_HOST_XLATE_MODE_DATA_SHIFT		14
+#define QTRACE_GUEST_XLATE_MODE_DATA			0x3000
+#define QTRACE_GUEST_XLATE_MODE_DATA_SHIFT		12
+#define QTRACE_HOST_XLATE_MODE_INSTRUCTION		0x0C00
+#define QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT	10
+#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION		0x0300
+#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT	8
+#define QTRACE_PTCR_PRESENT				0x0080
+#define QTRACE_LPID_PRESENT				0x0040
+#define QTRACE_PID_PRESENT				0x0020
+
+#define QTRACE_XLATE_MODE_MASK				0x3
+#define QTRACE_XLATE_MODE_RADIX				0
+#define QTRACE_XLATE_MODE_HPT				1
+#define QTRACE_XLATE_MODE_REAL				2
+#define QTRACE_XLATE_MODE_NOT_DEFINED			3
+
+#define UNHANDLED_FLAGS3 0
 
 /* Termination codes */
 #define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
 #define QTRACE_UNCONDITIONAL_BRANCH			0x08
+
+/* 4 level radix */
+#define NR_RADIX_PTES	4
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
@@ -63,11 +98,82 @@
 static unsigned int verbose;
 static uint32_t version;
 
+static unsigned int get_radix_insn_ptes(uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
+		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
+			host_mode, guest_mode);
+		exit(1);
+	}
+
+	if (host_mode == QTRACE_XLATE_MODE_RADIX)
+		return NR_RADIX_PTES;
+
+	return 0;
+}
+
+static unsigned int get_radix_data_ptes(uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
+		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
+			host_mode, guest_mode);
+		exit(1);
+	}
+
+	if (host_mode == QTRACE_XLATE_MODE_RADIX)
+		return NR_RADIX_PTES;
+
+	return 0;
+}
+
+static uint32_t parse_radix(void *p, unsigned int nr, uint64_t *ptes)
+{
+	unsigned long i;
+	void *q = p;
+
+	for (i = 0; i < nr; i++) {
+		ptes[i] = be64_to_cpup(p);
+		p += sizeof(uint64_t);
+	}
+
+	return p - q;
+}
+
+static void print_radix(unsigned int nr, uint64_t *ptes)
+{
+	unsigned long i;
+
+	for (i = 0; i < nr; i++)
+		fprintf(stdout, "0x%016lx ", ptes[i]);
+}
+
+/*
+ * A header has a zero instruction, a set of record flags, and a set of file
+ * header flags. Only a few of the record flags values are populated.
+ */
 static unsigned long parse_header(void *p, unsigned long *iar)
 {
 	void *q = p;
 	uint32_t insn;
-	uint16_t flags = 0, flags2 = 0, hdr_flags = 0;
+	uint16_t flags = 0, flags2 = 0, flags3 = 0, hdr_flags = 0;
 
 	insn = be32_to_cpup(p);
 	p += sizeof(uint32_t);
@@ -93,17 +199,32 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 		exit(1);
 	}
 
-	if (flags2 & ~(QTRACE_FILE_HEADER_PRESENT)) {
+	if (flags2 & ~(QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT)) {
 		fprintf(stderr, "Invalid file\n");
 		exit(1);
+	}
+
+	if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
+		flags3 = be16_to_cpup(p);
+		p += sizeof(uint16_t);
 	}
 
 	hdr_flags = be16_to_cpup(p);
 	p += sizeof(uint16_t);
 
 	if (verbose >= 2) {
-		printf("flags 0x%04x flags2 0x%04x hdr_flags 0x%04x\n",
-			flags, flags2, hdr_flags);
+		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x hdr_flags 0x%04x\n",
+			flags, flags2, flags3, hdr_flags);
+	}
+
+	if (flags3 & UNHANDLED_FLAGS3) {
+		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
+		exit(1);
+	}
+
+	if (hdr_flags & UNHANDLED_HDR_FLAGS) {
+		printf("Unhandled file header flags 0x%04x\n", hdr_flags & UNHANDLED_HDR_FLAGS);
+		exit(1);
 	}
 
 	if (hdr_flags & QTRACE_HDR_VERSION_NUMBER_PRESENT) {
@@ -114,6 +235,34 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 	if (hdr_flags & QTRACE_HDR_IAR_PRESENT) {
 		*iar = be64_to_cpup(p);
 		p += sizeof(uint64_t);
+	}
+
+	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
+		unsigned int nr = get_radix_insn_ptes(flags3);
+		uint64_t radix_insn_ptes[NR_RADIX_PTES];
+
+		p += parse_radix(p, nr, radix_insn_ptes);
+	}
+
+	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT)
+		p += sizeof(uint32_t);
+
+	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT)
+		p += sizeof(uint8_t);
+
+	if (flags3 & QTRACE_PTCR_PRESENT)
+		p += sizeof(uint64_t);
+
+	if (flags3 & QTRACE_LPID_PRESENT)
+		p += sizeof(uint64_t);
+
+	if (flags3 & QTRACE_PID_PRESENT)
+		p += sizeof(uint32_t);
+
+	if (hdr_flags & QTRACE_HDR_COMMENT_PRESENT) {
+		uint16_t len = be16_to_cpup(p);
+		p += sizeof(uint16_t);
+		p += len;
 	}
 
 	return p - q;
@@ -294,12 +443,20 @@ static void dump(unsigned char *p, unsigned long len)
 static unsigned long parse_record(void *p, unsigned long *ea)
 {
 	uint32_t insn;
-	uint16_t flags, flags2 = 0;
+	uint16_t flags, flags2 = 0, flags3 = 0;
 	uint64_t iar = 0;
+	uint64_t iar_rpn;
+	uint8_t iar_page_size;
 	uint64_t data_address;
+	uint32_t data_rpn;
+	uint8_t data_page_size;
 	uint8_t node;
 	uint8_t term_node, term_code;
 	void *q;
+	unsigned int radix_nr_data_ptes = 0;
+	uint64_t radix_insn_ptes[NR_RADIX_PTES];
+	unsigned int radix_nr_insn_ptes = 0;
+	uint64_t radix_data_ptes[NR_RADIX_PTES];
 
 	q = p;
 
@@ -314,6 +471,11 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	if (flags & QTRACE_EXTENDED_FLAGS_PRESENT) {
 		flags2 = be16_to_cpup(p);
 		p += sizeof(uint16_t);
+
+		if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
+			flags3 = be16_to_cpup(p);
+			p += sizeof(uint16_t);
+		}
 	}
 
 	if (flags & UNHANDLED_FLAGS) {
@@ -326,9 +488,14 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		exit(1);
 	}
 
+	if (flags3 & UNHANDLED_FLAGS3) {
+		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
+		exit(1);
+	}
+
 	if (verbose >= 2)
-		printf("flags 0x%04x flags2 0x%04x\n",
-			flags, flags2);
+		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x\n",
+			flags, flags2, flags3);
 
 	/* This bit is used on its own, no extra storage is allocated */
 	if (flags & QTRACE_IAR_CHANGE_PRESENT) {
@@ -346,9 +513,22 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		p += sizeof(uint8_t);
 	}
 
+	if (flags & QTRACE_PROCESSOR_PRESENT)
+		p += sizeof(uint8_t);
+
 	if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
 		data_address = be64_to_cpup(p);
 		p += sizeof(uint64_t);
+	}
+
+	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
+		radix_nr_data_ptes = get_radix_data_ptes(flags3);
+		p += parse_radix(p, radix_nr_data_ptes, radix_data_ptes);
+	}
+
+	if (flags & QTRACE_DATA_RPN_PRESENT) {
+		data_rpn = be32_to_cpup(p);
+		p += sizeof(uint32_t);
 	}
 
 	if (flags & QTRACE_IAR_PRESENT) {
@@ -356,20 +536,102 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		p += sizeof(uint64_t);
 	}
 
+	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
+		radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
+		p += parse_radix(p, radix_nr_insn_ptes, radix_insn_ptes);
+	}
+
+	if (flags & QTRACE_IAR_RPN_PRESENT) {
+		iar_rpn = be32_to_cpup(p);
+		p += sizeof(uint32_t);
+	}
+
+	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
+		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
+		uint8_t gprs_out, fprs_out, vmxs_out, vsxs_out = 0, sprs_out;
+
+		gprs_in = *(uint8_t *)p++;
+		fprs_in = *(uint8_t *)p++;
+		vmxs_in = *(uint8_t *)p++;
+		if (version >= 0x7000000)
+			vsxs_in = *(uint8_t *)p++;
+		sprs_in = *(uint8_t *)p++;
+
+		gprs_out = *(uint8_t *)p++;
+		fprs_out = *(uint8_t *)p++;
+		vmxs_out = *(uint8_t *)p++;
+		if (version >= 0x7000000)
+			vsxs_out = *(uint8_t *)p++;
+		sprs_out = *(uint8_t *)p++;
+
+		p += gprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
+		p += fprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
+		p += vmxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+		p += vsxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+		p += sprs_in * (sizeof(uint16_t) + sizeof(uint64_t));
+
+		p += gprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
+		p += fprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
+		p += vmxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+		p += vsxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+		p += sprs_out * (sizeof(uint16_t) + sizeof(uint64_t));
+	}
+
+	if (flags2 & QTRACE_TRACE_ERROR_CODE_PRESENT) {
+		p += sizeof(uint8_t);
+	}
+
+	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
+		iar_page_size = *(uint8_t *)p;
+		p += 1;
+	}
+
+	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
+		data_page_size = *(uint8_t *)p;
+		p += 1;
+	}
+
 #ifdef USE_BFD
 	__print_address(*ea);
 	disasm(*ea, &insn, sizeof(insn));
 #else
-	fprintf(stdout, "%p\t0x%x\n", ea, insn);
+	fprintf(stdout, "0x%016lx\t0x%x\n", *ea, insn);
 #endif
 
 	if (verbose) {
-		if (flags & (QTRACE_DATA_ADDRESS_PRESENT|QTRACE_NODE_PRESENT|
+		if (flags & (QTRACE_DATA_ADDRESS_PRESENT |
+				QTRACE_DATA_RPN_PRESENT |
+				QTRACE_DATA_PAGE_SIZE_PRESENT |
+				QTRACE_IAR_RPN_PRESENT |
+				QTRACE_IAR_PAGE_SIZE_PRESENT |
+				QTRACE_NODE_PRESENT |
 				QTRACE_TERMINATION_PRESENT))
 			fprintf(stdout, "\t #");
 
 		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
 			fprintf(stdout, " 0x%016lx", data_address);
+
+		if (flags & QTRACE_DATA_RPN_PRESENT)
+			fprintf(stdout, " DATA RPN 0x%08x", data_rpn);
+
+		if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
+			fprintf(stdout, " DATA RADIX ");
+			print_radix(radix_nr_data_ptes, radix_data_ptes);
+		}
+
+		if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT)
+			fprintf(stdout, " DATA PAGE SIZE %d", data_page_size);
+
+		if (flags & QTRACE_IAR_RPN_PRESENT)
+			fprintf(stdout, " INSN RPN 0x%08lx", iar_rpn);
+
+		if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
+			fprintf(stdout, " INSN RADIX ");
+			print_radix(radix_nr_insn_ptes, radix_insn_ptes);
+		}
+
+		if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
+			fprintf(stdout, " INSN PAGE SIZE %d", iar_page_size);
 
 		if (flags & QTRACE_NODE_PRESENT)
 			fprintf(stdout, " NODE 0x%02x", node);
