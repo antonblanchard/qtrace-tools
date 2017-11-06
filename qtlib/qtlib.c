@@ -1,5 +1,5 @@
 /*
- * Qtrace parsing library
+ * Qtrace reader library
  *
  * Copyright (C) 2017 Anton Blanchard <anton@au.ibm.com>, IBM
  *
@@ -19,82 +19,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "qtrace_record.h"
+#include "qtrace.h"
 #include "qtlib.h"
-
-/* File header flags */
-#define QTRACE_HDR_MAGIC_NUMBER_PRESENT			0x8000
-#define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
-#define QTRACE_HDR_IAR_PRESENT				0x2000
-#define QTRACE_HDR_IAR_RPN_PRESENT			0x0800
-#define QTRACE_HDR_IAR_PAGE_SIZE_PRESENT		0x0040
-#define QTRACE_HDR_COMMENT_PRESENT			0x0002
-
-#define UNHANDLED_HDR_FLAGS	(~(QTRACE_HDR_MAGIC_NUMBER_PRESENT|QTRACE_HDR_VERSION_NUMBER_PRESENT|QTRACE_HDR_IAR_PRESENT|QTRACE_HDR_IAR_RPN_PRESENT|QTRACE_HDR_IAR_PAGE_SIZE_PRESENT|QTRACE_HDR_COMMENT_PRESENT))
-
-/* Primary flags */
-#define QTRACE_IAR_CHANGE_PRESENT			0x8000
-#define QTRACE_NODE_PRESENT				0x4000
-#define QTRACE_TERMINATION_PRESENT			0x2000
-#define QTRACE_PROCESSOR_PRESENT			0x1000
-#define QTRACE_DATA_ADDRESS_PRESENT			0x0800
-#define QTRACE_DATA_RPN_PRESENT				0x0200
-#define QTRACE_IAR_PRESENT				0x0040
-#define QTRACE_IAR_RPN_PRESENT				0x0010
-#define QTRACE_REGISTER_TRACE_PRESENT			0x0008
-#define QTRACE_EXTENDED_FLAGS_PRESENT			0x0001
-
-#define UNHANDLED_FLAGS	(~(QTRACE_IAR_CHANGE_PRESENT|QTRACE_NODE_PRESENT|QTRACE_TERMINATION_PRESENT|QTRACE_PROCESSOR_PRESENT|QTRACE_DATA_ADDRESS_PRESENT|QTRACE_DATA_RPN_PRESENT|QTRACE_IAR_PRESENT|QTRACE_IAR_RPN_PRESENT|QTRACE_REGISTER_TRACE_PRESENT|QTRACE_EXTENDED_FLAGS_PRESENT))
-
-/* First extended flags */
-#define QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT	0x4000
-#define QTRACE_TRACE_ERROR_CODE_PRESENT			0x1000
-#define QTRACE_IAR_PAGE_SIZE_PRESENT			0x0200
-#define QTRACE_DATA_PAGE_SIZE_PRESENT			0x0100
-#define QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT	0x0020
-#define QTRACE_FILE_HEADER_PRESENT			0x0002
-#define QTRACE_EXTENDED_FLAGS2_PRESENT			0x0001
-
-#define UNHANDLED_FLAGS2	(~(QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT|QTRACE_TRACE_ERROR_CODE_PRESENT|QTRACE_IAR_PAGE_SIZE_PRESENT|QTRACE_DATA_PAGE_SIZE_PRESENT|QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT|QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT))
-
-#define IS_RADIX(FLAGS2)	((FLAGS2) & QTRACE_EXTENDED_FLAGS2_PRESENT)
-
-/* Second extended flags */
-#define QTRACE_HOST_XLATE_MODE_DATA			0xC000
-#define QTRACE_HOST_XLATE_MODE_DATA_SHIFT		14
-#define QTRACE_GUEST_XLATE_MODE_DATA			0x3000
-#define QTRACE_GUEST_XLATE_MODE_DATA_SHIFT		12
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION		0x0C00
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT	10
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION		0x0300
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT	8
-#define QTRACE_PTCR_PRESENT				0x0080
-#define QTRACE_LPID_PRESENT				0x0040
-#define QTRACE_PID_PRESENT				0x0020
-
-#define QTRACE_XLATE_MODE_MASK				0x3
-#define QTRACE_XLATE_MODE_RADIX				0
-#define QTRACE_XLATE_MODE_HPT				1
-#define QTRACE_XLATE_MODE_REAL				2
-#define QTRACE_XLATE_MODE_NOT_DEFINED			3
-
-#define UNHANDLED_FLAGS3 0
-
-/* Termination codes */
-#define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
-#define QTRACE_UNCONDITIONAL_BRANCH			0x08
-
-/* 4 level radix */
-#define NR_RADIX_PTES	4
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
-#define be32_to_cpup(A)	__builtin_bswap32(*(uint32_t *)(A))
-#define be64_to_cpup(A)	__builtin_bswap64(*(uint64_t *)(A))
-#else
-#define be16_to_cpup(A)	(*(uint16_t *)A)
-#define be32_to_cpup(A)	(*(uint32_t *)A)
-#define be64_to_cpup(A)	(*(uint64_t *)A)
-#endif
+#include "endian.h"
 
 #define GET8(__state) \
 ({ \
@@ -259,7 +187,7 @@ static bool qtrace_parse_header(struct qtrace_state *state)
 	}
 
 	if (hdr_flags & QTRACE_HDR_MAGIC_NUMBER_PRESENT)
-		GET32(state);
+		state->magic = GET32(state);
 
 	if (hdr_flags & QTRACE_HDR_VERSION_NUMBER_PRESENT)
 		state->version = GET32(state);
@@ -277,11 +205,15 @@ static bool qtrace_parse_header(struct qtrace_state *state)
 	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) {
 		state->next_insn_rpn_valid = true;
 		state->next_insn_rpn = GET32(state);
+	} else {
+		state->next_insn_rpn_valid = false;
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT) {
 		state->next_insn_page_size_valid = true;
 		state->next_insn_page_size = GET8(state);
+	} else {
+		state->next_insn_page_size_valid = false;
 	}
 
 	if (flags3 & QTRACE_PTCR_PRESENT)
@@ -340,11 +272,15 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 
 	record->insn_addr = state->next_insn_addr;
 
-	if (state->next_insn_rpn_valid)
+	if (state->next_insn_rpn_valid) {
+		record->insn_rpn_valid = true;
 		record->insn_rpn = state->next_insn_rpn;
+	}
 
-	if (state->next_insn_page_size_valid)
+	if (state->next_insn_page_size_valid) {
+		record->insn_page_size = true;
 		record->insn_page_size = state->next_insn_page_size;
+	}
 
 	record->insn = GET32(state);
 
@@ -404,8 +340,10 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 	if (flags & QTRACE_PROCESSOR_PRESENT)
 		GET8(state);
 
-	if (flags & QTRACE_DATA_ADDRESS_PRESENT)
+	if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
+		record->data_addr_valid = true;
 		record->data_addr = GET64(state);
+	}
 
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int radix_nr_data_ptes = get_radix_data_ptes(flags3);
@@ -414,8 +352,12 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 			goto err;
 	}
 
-	if (flags & QTRACE_DATA_RPN_PRESENT)
+	if (flags & QTRACE_DATA_RPN_PRESENT) {
+		record->data_rpn_valid = true;
 		record->data_rpn = GET32(state);
+	} else {
+		record->data_rpn_valid = false;
+	}
 
 	if (flags & QTRACE_IAR_PRESENT) {
 		state->next_insn_addr = GET64(state);
@@ -430,9 +372,14 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 			goto err;
 	}
 
-	if (flags & QTRACE_IAR_RPN_PRESENT)
+	if (flags & QTRACE_IAR_RPN_PRESENT) {
+		state->next_insn_rpn_valid = true;
 		state->next_insn_rpn = GET32(state);
+	} else {
+		state->next_insn_rpn_valid = false;
+	}
 
+	/* FIXME */
 	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
 		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
 		uint8_t gprs_out, fprs_out, vmxs_out, vsxs_out = 0, sprs_out;
@@ -470,20 +417,31 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 		state->ptr += sz;
 	}
 
+	/* FIXME */
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
 		GET32(state);
 
+	/* FIXME */
 	if (flags2 & QTRACE_TRACE_ERROR_CODE_PRESENT)
 		GET8(state);
 
+	/* FIXME */
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)
 		GET8(state);
 
-	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
+	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
+		state->next_insn_page_size_valid = true;
 		state->next_insn_page_size = GET8(state);
+	} else {
+		state->next_insn_page_size_valid = false;
+	}
 
-	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT)
+	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
+		record->data_page_size_valid = true;
 		record->data_page_size = GET8(state);
+	} else {
+		record->data_page_size_valid = false;
+	}
 
 	return true;
 
