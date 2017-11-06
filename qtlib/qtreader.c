@@ -21,13 +21,13 @@
 
 #include "qtrace_record.h"
 #include "qtrace.h"
-#include "qtlib.h"
+#include "qtreader.h"
 #include "endian.h"
 
 #define GET8(__state) \
 ({ \
 	uint8_t t; \
-	struct qtrace_state *s = (__state); \
+	struct qtreader_state *s = (__state); \
 	if (s->ptr + sizeof(t) > (s->mem + s->size)) \
 		goto err; \
 	t = *(uint8_t *)s->ptr; \
@@ -38,7 +38,7 @@
 #define GET16(__state) \
 ({ \
 	uint16_t t; \
-	struct qtrace_state *s = (__state); \
+	struct qtreader_state *s = (__state); \
 	if (s->ptr + sizeof(t) > (s->mem + s->size)) \
 		goto err; \
 	t = be16_to_cpup(s->ptr); \
@@ -49,7 +49,7 @@
 #define GET32(__state) \
 ({ \
 	uint32_t t; \
-	struct qtrace_state *s = (__state); \
+	struct qtreader_state *s = (__state); \
 	if (s->ptr + sizeof(t) > (s->mem + s->size)) \
 		goto err; \
 	t = be32_to_cpup(s->ptr); \
@@ -60,7 +60,7 @@
 #define GET64(__state) \
 ({ \
 	uint64_t t; \
-	struct qtrace_state *s = (__state); \
+	struct qtreader_state *s = (__state); \
 	if (s->ptr + sizeof(t) > (s->mem + s->size)) \
 		goto err; \
 	t = be64_to_cpup(s->ptr); \
@@ -114,7 +114,7 @@ static unsigned int get_radix_data_ptes(uint16_t flags3)
 	return 0;
 }
 
-static bool parse_radix(struct qtrace_state *state, unsigned int nr, uint64_t *ptes)
+static bool parse_radix(struct qtreader_state *state, unsigned int nr, uint64_t *ptes)
 {
 	unsigned long i;
 
@@ -135,7 +135,7 @@ err:
  * A header has a zero instruction, a set of record flags, and a set of file
  * header flags. Only a few of the record flags values are populated.
  */
-static bool qtrace_parse_header(struct qtrace_state *state)
+static bool qtreader_parse_header(struct qtreader_state *state)
 {
 	uint32_t insn;
 	uint16_t flags = 0, flags2 = 0, flags3 = 0, hdr_flags = 0;
@@ -240,7 +240,7 @@ err:
 	return false;
 }
 
-bool qtrace_initialize(struct qtrace_state *state, void *mem, size_t size, unsigned int verbose)
+bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose)
 {
 	memset(state, 0, sizeof(*state));
 
@@ -249,13 +249,13 @@ bool qtrace_initialize(struct qtrace_state *state, void *mem, size_t size, unsig
 	state->verbose = verbose;
 	state->fd = -1;
 
-	if (qtrace_parse_header(state) == false)
+	if (qtreader_parse_header(state) == false)
 		return false;
 
 	return true;
 }
 
-bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record)
+bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record)
 {
 	uint16_t flags, flags2 = 0, flags3 = 0;
 
@@ -266,7 +266,7 @@ bool qtrace_next_record(struct qtrace_state *state, struct qtrace_record *record
 	 * identified by a null instruction. Skip over them.
 	 */
 	while (be32_to_cpup(state->ptr) == 0) {
-		if (qtrace_parse_header(state) == false)
+		if (qtreader_parse_header(state) == false)
 			goto err;
 	}
 
@@ -449,7 +449,7 @@ err:
 	return false;
 }
 
-bool qtrace_initialize_fd(struct qtrace_state *state, int fd, unsigned int verbose)
+bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int verbose)
 {
 	struct stat buf;
 	size_t size;
@@ -468,7 +468,7 @@ bool qtrace_initialize_fd(struct qtrace_state *state, int fd, unsigned int verbo
 		return false;
 	}
 
-	ret = qtrace_initialize(state, p, size, verbose);
+	ret = qtreader_initialize(state, p, size, verbose);
 
 	/* qtrace_initialize zeroes ->fd, so we have to do this here */
 	state->fd = fd;
@@ -476,7 +476,7 @@ bool qtrace_initialize_fd(struct qtrace_state *state, int fd, unsigned int verbo
 	return ret;
 }
 
-void qtrace_destroy(struct qtrace_state *state)
+void qtreader_destroy(struct qtreader_state *state)
 {
 	if (state->fd != -1) {
 		free(state->mem);
