@@ -9,8 +9,6 @@
 struct qtwriter_state {
 	uint32_t version;
 	uint32_t magic;
-
-	/* internal stuff */
 	struct qtrace_record prev_record;
 	bool header_written;
 	int fd;
@@ -19,7 +17,8 @@ struct qtwriter_state {
 	void *ptr;
 };
 
-bool qtwriter_open(struct qtwriter_state *state, char *filename);
+bool qtwriter_open(struct qtwriter_state *state, char *filename,
+		   uint32_t magic);
 bool qtwriter_write_record(struct qtwriter_state *state,
 			   struct qtrace_record *record);
 void qtwriter_close(struct qtwriter_state *state);

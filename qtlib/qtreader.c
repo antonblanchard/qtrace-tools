@@ -278,7 +278,7 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	}
 
 	if (state->next_insn_page_size_valid) {
-		record->insn_page_size = true;
+		record->insn_page_size_valid = true;
 		record->insn_page_size = state->next_insn_page_size;
 	}
 
@@ -326,7 +326,8 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		GET8(state);
 		termination_code = GET8(state);
 
-		if (termination_code == QTRACE_EXCEEDED_MAX_INST_DEPTH)
+		if ((termination_code == QTRACE_EXCEEDED_MAX_INST_DEPTH) ||
+		    (termination_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH))
 			record->is_conditional_branch = true;
 		else
 			record->is_conditional_branch = false;

@@ -9,8 +9,6 @@
 struct qtreader_state {
 	uint32_t version;
 	uint32_t magic;
-
-	/* Internal stuff */
 	uint64_t next_insn_addr;
 	uint32_t next_insn_rpn;
 	bool next_insn_rpn_valid;
@@ -25,6 +23,17 @@ struct qtreader_state {
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);
 bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int verbose);
+
+static inline uint32_t qtreader_version(struct qtreader_state *state)
+{
+	return state->version;
+}
+
+static inline uint32_t qtreader_magic(struct qtreader_state *state)
+{
+	return state->magic;
+}
+
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record);
 void qtreader_destroy(struct qtreader_state *state);
 

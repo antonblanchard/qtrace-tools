@@ -40,6 +40,8 @@ static int fallocate_or_ftruncate(int fd, size_t size)
 	return 0;
 }
 
+#define QTWRITER_VERSION 0x7010000
+
 /*
  * This needs to be bigger than the maximum qtrace record size. We also
  * want it to be large enough that we don't continually extend the file
@@ -47,9 +49,15 @@ static int fallocate_or_ftruncate(int fd, size_t size)
  */
 #define BUFFER	(128*1024)
 
-bool qtwriter_open(struct qtwriter_state *state, char *filename)
+bool qtwriter_open(struct qtwriter_state *state, char *filename,
+		   uint32_t magic)
 {
 	void *p;
+
+	memset(state, 0, sizeof(*state));
+
+	state->magic = magic;
+	state->version = QTWRITER_VERSION;
 
 	state->fd = open(filename, O_RDWR|O_CREAT|O_TRUNC, 0644);
 	if (state->fd == -1) {
@@ -249,7 +257,8 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 
 		/* termination code */
 		if (state->prev_record.is_conditional_branch == true)
-			termination_code = QTRACE_EXCEEDED_MAX_INST_DEPTH;
+			//termination_code = QTRACE_EXCEEDED_MAX_INST_DEPTH;
+			termination_code = QTRACE_EXCEEDED_MAX_BRANCH_DEPTH;
 		else if (state->prev_record.is_unconditional_branch == true)
 			termination_code = QTRACE_UNCONDITIONAL_BRANCH;
 
@@ -279,6 +288,7 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	return true;
 }
 
+#if 0
 void qtwriter_write_record_simple(struct qtwriter_state *state, uint32_t insn,
 				  unsigned long insn_addr)
 {
@@ -294,7 +304,6 @@ void qtwriter_write_record_simple(struct qtwriter_state *state, uint32_t insn,
 	qtwriter_write_record(state, &record);
 }
 
-#if 0
 void qtwriter_write_storage_record_simple(struct qtwriter_state *state,
 					  uint32_t insn, unsigned long insn_addr,
 					  unsigned long storage_addr,
@@ -314,6 +323,7 @@ void qtwriter_write_storage_record_simple(struct qtwriter_state *state,
 
 	qtwriter_write_record(state, &record);
 }
+#endif
 
 void qtwriter_close(struct qtwriter_state *state)
 {
@@ -333,4 +343,3 @@ void qtwriter_close(struct qtwriter_state *state)
 
 	close(state->fd);
 }
-#endif
