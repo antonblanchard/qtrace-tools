@@ -1,5 +1,5 @@
 /*
- * Create a basic block vector file from a qtrace
+ * Basic block vector reduction on a qtrace
  *
  * Copyright (C) 2017 Anton Blanchard <anton@au.ibm.com>, IBM
  *
@@ -14,262 +14,27 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#include "matrix.h"
+#include "pam.h"
 
 #include <ccan/htable/htable_type.h>
 #include <ccan/hash/hash.h>
 
-#define DEFAULT_PERIOD 10000000UL
-#define NR_BUCKETS 10000
+#include "qtreader.h"
 
-/* File header flags */
-#define QTRACE_HDR_MAGIC_NUMBER_PRESENT			0x8000
-#define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
-#define QTRACE_HDR_IAR_PRESENT				0x2000
-#define QTRACE_HDR_IAR_RPN_PRESENT			0x0800
-#define QTRACE_HDR_IAR_PAGE_SIZE_PRESENT		0x0040
-#define QTRACE_HDR_COMMENT_PRESENT			0x0002
+/* Number of instructions in each interval */ 
+#define DEFAULT_PERIOD		10000000UL
 
-#define UNHANDLED_HDR_FLAGS	(~(QTRACE_HDR_MAGIC_NUMBER_PRESENT|QTRACE_HDR_VERSION_NUMBER_PRESENT|QTRACE_HDR_IAR_PRESENT|QTRACE_HDR_IAR_RPN_PRESENT|QTRACE_HDR_IAR_PAGE_SIZE_PRESENT|QTRACE_HDR_COMMENT_PRESENT))
+#define DEFAULT_DIMENSIONS	127
 
-/* Primary flags */
-#define QTRACE_IAR_CHANGE_PRESENT			0x8000
-#define QTRACE_NODE_PRESENT				0x4000
-#define QTRACE_TERMINATION_PRESENT			0x2000
-#define QTRACE_PROCESSOR_PRESENT			0x1000
-#define QTRACE_DATA_ADDRESS_PRESENT			0x0800
-#define QTRACE_DATA_RPN_PRESENT				0x0200
-#define QTRACE_IAR_PRESENT				0x0040
-#define QTRACE_IAR_RPN_PRESENT				0x0010
-#define QTRACE_REGISTER_TRACE_PRESENT			0x0008
-#define QTRACE_EXTENDED_FLAGS_PRESENT			0x0001
+/* The initial size of our hash table and matrix. This grows as needed. */
+#define DEFAULT_PERIODS		1000
+#define DEFAULT_BASIC_BLOCKS	10000
 
-#define UNHANDLED_FLAGS	(~(QTRACE_IAR_CHANGE_PRESENT|QTRACE_NODE_PRESENT|QTRACE_TERMINATION_PRESENT|QTRACE_PROCESSOR_PRESENT|QTRACE_DATA_ADDRESS_PRESENT|QTRACE_DATA_RPN_PRESENT|QTRACE_IAR_PRESENT|QTRACE_IAR_RPN_PRESENT|QTRACE_REGISTER_TRACE_PRESENT|QTRACE_EXTENDED_FLAGS_PRESENT))
-
-/* First extended flags */
-#define QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT	0x4000
-#define QTRACE_TRACE_ERROR_CODE_PRESENT			0x1000
-#define QTRACE_IAR_PAGE_SIZE_PRESENT			0x0200
-#define QTRACE_DATA_PAGE_SIZE_PRESENT			0x0100
-#define QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT	0x0020
-#define QTRACE_FILE_HEADER_PRESENT			0x0002
-#define QTRACE_EXTENDED_FLAGS2_PRESENT			0x0001
-
-#define UNHANDLED_FLAGS2	(~(QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT|QTRACE_TRACE_ERROR_CODE_PRESENT|QTRACE_IAR_PAGE_SIZE_PRESENT|QTRACE_DATA_PAGE_SIZE_PRESENT|QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT|QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT))
-
-#define IS_RADIX(FLAGS2)	((FLAGS2) & QTRACE_EXTENDED_FLAGS2_PRESENT)
-
-/* Second extended flags */
-#define QTRACE_HOST_XLATE_MODE_DATA			0xC000
-#define QTRACE_HOST_XLATE_MODE_DATA_SHIFT		14
-#define QTRACE_GUEST_XLATE_MODE_DATA			0x3000
-#define QTRACE_GUEST_XLATE_MODE_DATA_SHIFT		12
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION		0x0C00
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT	10
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION		0x0300
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT	8
-#define QTRACE_PTCR_PRESENT				0x0080
-#define QTRACE_LPID_PRESENT				0x0040
-#define QTRACE_PID_PRESENT				0x0020
-
-#define QTRACE_XLATE_MODE_MASK				0x3
-#define QTRACE_XLATE_MODE_RADIX				0
-#define QTRACE_XLATE_MODE_HPT				1
-#define QTRACE_XLATE_MODE_REAL				2
-#define QTRACE_XLATE_MODE_NOT_DEFINED			3
-
-#define UNHANDLED_FLAGS3 0
-
-/* Termination codes */
-#define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
-#define QTRACE_UNCONDITIONAL_BRANCH			0x08
-
-/* 4 level radix */
-#define NR_RADIX_PTES	4
-
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-#define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
-#define be32_to_cpup(A)	__builtin_bswap32(*(uint32_t *)(A))
-#define be64_to_cpup(A)	__builtin_bswap64(*(uint64_t *)(A))
-#else
-#define be16_to_cpup(A)	(*(uint16_t *)A)
-#define be32_to_cpup(A)	(*(uint32_t *)A)
-#define be64_to_cpup(A)	(*(uint64_t *)A)
-#endif
-
-static unsigned int verbose;
-static uint32_t version;
-
-static unsigned int get_radix_insn_ptes(uint16_t flags3)
-{
-	unsigned int host_mode;
-	unsigned int guest_mode;
-
-	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
-
-	if (host_mode == QTRACE_XLATE_MODE_RADIX)
-		return NR_RADIX_PTES;
-
-	return 0;
-}
-
-static unsigned int get_radix_data_ptes(uint16_t flags3)
-{
-	unsigned int host_mode;
-	unsigned int guest_mode;
-
-	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_DATA_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
-
-	if (host_mode == QTRACE_XLATE_MODE_RADIX)
-		return NR_RADIX_PTES;
-
-	return 0;
-}
-
-static uint32_t parse_radix(void *p, unsigned int nr, uint64_t *ptes)
-{
-	unsigned long i;
-	void *q = p;
-
-	for (i = 0; i < nr; i++) {
-		if (ptes)
-			ptes[i] = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	return p - q;
-}
-
-/*
- * A header has a zero instruction, a set of record flags, and a set of file
- * header flags. Only a few of the record flags values are populated.
- */
-static unsigned long parse_header(void *p, unsigned long *iar)
-{
-	void *q = p;
-	uint32_t insn;
-	uint16_t flags = 0, flags2 = 0, flags3 = 0, hdr_flags = 0;
-
-	insn = be32_to_cpup(p);
-	p += sizeof(uint32_t);
-
-	if (insn) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (flags != QTRACE_EXTENDED_FLAGS_PRESENT) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	flags2 = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (!(flags2 & QTRACE_FILE_HEADER_PRESENT)) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	if (flags2 & ~(QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT)) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
-		flags3 = be16_to_cpup(p);
-		p += sizeof(uint16_t);
-	}
-
-	hdr_flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (verbose >= 2) {
-		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x hdr_flags 0x%04x\n",
-			flags, flags2, flags3, hdr_flags);
-	}
-
-	if (flags3 & UNHANDLED_FLAGS3) {
-		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
-		exit(1);
-	}
-
-	if (hdr_flags & UNHANDLED_HDR_FLAGS) {
-		printf("Unhandled file header flags 0x%04x\n", hdr_flags & UNHANDLED_HDR_FLAGS);
-		exit(1);
-	}
-
-	if (hdr_flags & QTRACE_HDR_MAGIC_NUMBER_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_VERSION_NUMBER_PRESENT) {
-		version = be32_to_cpup(p);
-		p += sizeof(uint32_t);
-	}
-
-	if (hdr_flags & QTRACE_HDR_IAR_PRESENT) {
-		*iar = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int nr = get_radix_insn_ptes(flags3);
-
-		p += parse_radix(p, nr, NULL);
-	}
-
-	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT)
-		p += sizeof(uint8_t);
-
-	if (flags3 & QTRACE_PTCR_PRESENT)
-		p += sizeof(uint64_t);
-
-	if (flags3 & QTRACE_LPID_PRESENT)
-		p += sizeof(uint64_t);
-
-	if (flags3 & QTRACE_PID_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_COMMENT_PRESENT) {
-		uint16_t len = be16_to_cpup(p);
-		p += sizeof(uint16_t);
-		p += len;
-	}
-
-	return p - q;
-}
-
-static uint64_t instructions;
-static uint64_t period = DEFAULT_PERIOD;
-static uint32_t bb_size;
+#define MAX_K 32
 
 struct obj {
 	uint64_t addr;
@@ -296,17 +61,31 @@ HTABLE_DEFINE_TYPE(struct obj, objaddr, objhash, cmp, htable_obj);
 
 static struct htable_obj ht;
 
-static uint32_t bbv_id = 1;
+static uint32_t basic_block_id;
 
-static void init_bbv(void)
+static struct matrix *matrix;
+
+uint64_t interval = 0;
+
+static uint64_t period = DEFAULT_PERIOD;
+
+static uint32_t dimensions = DEFAULT_DIMENSIONS;
+
+static int verbose;
+
+static uint32_t my_k;
+
+static void initialize(void)
 {
-	if (!htable_obj_init_sized(&ht, NR_BUCKETS)) {
+	matrix = matrix_create(DEFAULT_PERIODS, DEFAULT_BASIC_BLOCKS);
+
+	if (!htable_obj_init_sized(&ht, DEFAULT_BASIC_BLOCKS)) {
 		fprintf(stderr, "htable_obj_init_sized failed\n");
 		exit(1);
 	}
 }
 
-static void add_bbv(uint64_t addr, uint32_t val)
+static void add_basic_block(uint64_t addr, uint32_t val)
 {
 	struct obj *obj;
 
@@ -323,211 +102,167 @@ static void add_bbv(uint64_t addr, uint32_t val)
 
 		obj->addr = addr;
 		obj->count = val;
-		obj->id = bbv_id++;
+		obj->id = basic_block_id++;
 
 		htable_obj_add(&ht, obj);
 	}
 }
 
-static void print_and_reset_bbv(void)
+static void reset_basic_block_vector(void)
 {
-	char *delimiter = "T:";
 	struct obj *obj;
 	struct htable_obj_iter i;
 
+	/* Resize in powers of two */
+	if (basic_block_id >= matrix->cols)
+		matrix_resize(matrix, matrix->rows, matrix->cols * 2);
+
+	if (interval >= matrix->rows)
+		matrix_resize(matrix, matrix->rows*2, matrix->cols);
+
 	for (obj = htable_obj_first(&ht, &i); obj; obj = htable_obj_next(&ht, &i)) {
-		if (obj->count) {
-			printf("%s%d:%ld", delimiter, obj->id, obj->count);
-			delimiter = "   :";
-		}
+		if (obj->count)
+			*matrix_entry(matrix, interval, obj->id) = obj->count;
 		obj->count = 0;
 	}
 
-	printf("\n");
+	interval++;
 }
 
-static unsigned long parse_record(void *p, unsigned long *ea)
+static bool do_one_pam(struct matrix *b, uint64_t k)
 {
-	uint16_t flags, flags2 = 0, flags3 = 0;
-	uint64_t iar = 0;
-	void *q;
+	struct pam *pam;
+	bool ret = false;
 
-	q = p;
+	printf("Testing K=%ld\n", k);
 
-	/* insn */
-	p += sizeof(uint32_t);
+	pam = pam_initialise(b, k);
+	if (!pam) {
+		fprintf(stderr, "pam_initialise failed\n");
+		exit(1);
+	}
 
-	flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
+	while (pam_iteration(pam) == true) {
+		if (verbose)
+			printf("%ld\n", pam->current_cost);
+	}
 
-	if (flags & QTRACE_EXTENDED_FLAGS_PRESENT) {
-		flags2 = be16_to_cpup(p);
-		p += sizeof(uint16_t);
+	printf("Cost: %ld\n", pam->current_cost);
 
-		if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
-			flags3 = be16_to_cpup(p);
-			p += sizeof(uint16_t);
+	print_medoids(pam, period);
+
+	printf("\n");
+
+	if (pam->current_cost == 0)
+		ret = true;
+
+	pam_destroy(pam);
+
+	return ret;
+}
+
+static void do_pam(void)
+{
+	struct matrix *b;
+
+	/*
+	 * For performance we grew the matrix rows and columns in powers of
+	 * two. At this point resize it to the actual number of periods and the
+	 * maximum basic block id.
+	 */
+	matrix_resize(matrix, interval, basic_block_id+1);
+
+	if (dimensions != 0)
+		b = random_projection(matrix, dimensions);
+	else
+		b = matrix;
+
+	if (verbose) {
+		printf("Matrix:\n");
+		matrix_print(b);
+	}
+
+	if (my_k) {
+		do_one_pam(b, my_k);
+	} else {
+		uint64_t k;
+
+		for (k = 1; k <= MAX_K; k++) {
+			if (do_one_pam(b, k) == true)
+				break;
 		}
 	}
 
-	if (flags & UNHANDLED_FLAGS) {
-		printf("Unhandled flags 0x%04x\n", flags & UNHANDLED_FLAGS);
+	matrix_destroy(b);
+}
+
+static void parse_qtrace(int fd)
+{
+	struct qtreader_state qtreader_state;
+	struct qtrace_record record;
+	uint64_t ea = -1UL;
+	static uint32_t bb_size = 0;
+	static uint64_t instructions = 0;
+
+	initialize();
+
+	if (qtreader_initialize_fd(&qtreader_state, fd, 0) == false) {
+		fprintf(stderr, "qtreader_initialize_fd failed\n");
 		exit(1);
 	}
 
-	if (flags2 & UNHANDLED_FLAGS2) {
-		printf("Unhandled flags2 0x%04x\n", flags2 & UNHANDLED_FLAGS2);
-		exit(1);
+	while (qtreader_next_record(&qtreader_state, &record) == true) {
+		if (ea == -1UL)
+			ea = record.insn_addr;
+
+		bb_size++;
+		/* What about exceptions? */
+		if (record.is_conditional_branch || record.is_unconditional_branch) {
+			if (verbose)
+				printf("BB 0x%lx length %d\n", ea, bb_size);
+			add_basic_block(ea, bb_size);
+			bb_size = 0;
+			ea = -1UL;
+		}
+
+		/* Should we wait for a basic block to terminate? */
+		instructions++;
+		if (instructions >= period) {
+			reset_basic_block_vector();
+			instructions = 0;
+		}
 	}
 
-	if (flags3 & UNHANDLED_FLAGS3) {
-		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
-		exit(1);
-	}
-
-	if (verbose >= 2)
-		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x\n",
-			flags, flags2, flags3);
-
-	/* This bit is used on its own, no extra storage is allocated */
-	if (flags & QTRACE_IAR_CHANGE_PRESENT) {
-	}
-
-	if (flags & QTRACE_NODE_PRESENT) {
-		p += sizeof(uint8_t);
-	}
-
-	if (flags & QTRACE_TERMINATION_PRESENT) {
-		p += sizeof(uint8_t);
-		p += sizeof(uint8_t);
-	}
-
-	if (flags & QTRACE_PROCESSOR_PRESENT)
-		p += sizeof(uint8_t);
-
-	if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
-		p += sizeof(uint64_t);
-	}
-
-	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int radix_nr_data_ptes = get_radix_data_ptes(flags3);
-		p += parse_radix(p, radix_nr_data_ptes, NULL);
-	}
-
-	if (flags & QTRACE_DATA_RPN_PRESENT) {
-		p += sizeof(uint32_t);
-	}
-
-	if (flags & QTRACE_IAR_PRESENT) {
-		iar = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
-		p += parse_radix(p, radix_nr_insn_ptes, NULL);
-	}
-
-	if (flags & QTRACE_IAR_RPN_PRESENT) {
-		p += sizeof(uint32_t);
-	}
-
-	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
-		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
-		uint8_t gprs_out, fprs_out, vmxs_out, vsxs_out = 0, sprs_out;
-
-		gprs_in = *(uint8_t *)p++;
-		fprs_in = *(uint8_t *)p++;
-		vmxs_in = *(uint8_t *)p++;
-		if (version >= 0x7000000)
-			vsxs_in = *(uint8_t *)p++;
-		sprs_in = *(uint8_t *)p++;
-
-		gprs_out = *(uint8_t *)p++;
-		fprs_out = *(uint8_t *)p++;
-		vmxs_out = *(uint8_t *)p++;
-		if (version >= 0x7000000)
-			vsxs_out = *(uint8_t *)p++;
-		sprs_out = *(uint8_t *)p++;
-
-		p += gprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += fprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += vmxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += vsxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += sprs_in * (sizeof(uint16_t) + sizeof(uint64_t));
-
-		p += gprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += fprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += vmxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += vsxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += sprs_out * (sizeof(uint16_t) + sizeof(uint64_t));
-	}
-
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT) {
-		p += sizeof(uint32_t);
-	}
-
-	if (flags2 & QTRACE_TRACE_ERROR_CODE_PRESENT) {
-		p += sizeof(uint8_t);
-	}
-
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT) {
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
-		p += 1;
-	}
-	if (flags & QTRACE_IAR_PRESENT)
-		*ea = iar;
-	else
-		*ea += sizeof(uint32_t);
-
-	bb_size++;
-	if (flags & QTRACE_TERMINATION_PRESENT) {
-		if (verbose)
-			printf("BB 0x%lx length %d\n", *ea, bb_size);
-		add_bbv(*ea, bb_size);
-		bb_size = 0;
-	}
-
-	instructions++;
-
-	if (instructions >= period) {
-		print_and_reset_bbv();
-		instructions = 0;
-	}
-
-	return p - q;
+	qtreader_destroy(&qtreader_state);
 }
 
 static void usage(void)
 {
 	fprintf(stderr, "Usage: qtrace-bbv [OPTION]... [FILE]\n\n");
-	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
 	fprintf(stderr, "\t-p\t\t\tperiod in instructions (default %ld)\n", DEFAULT_PERIOD);
+	fprintf(stderr, "\t-k\t\t\tNumber of medoids (0 to sweep)\n");
+	fprintf(stderr, "\t-d\t\t\tdimensionality reduction (default %d, 0 for none)\n", DEFAULT_DIMENSIONS);
+	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
 }
 
 int main(int argc, char *argv[])
 {
 	int fd;
-	struct stat buf;
-	void *p;
-	unsigned long size, x;
-	unsigned long ea = 0;
-
-	init_bbv();
 
 	while (1) {
-		signed char c = getopt(argc, argv, "p:v");
+		signed char c = getopt(argc, argv, "d:k:p:v");
 		if (c < 0)
 			break;
 
 		switch (c) {
+		case 'd':
+			dimensions = strtoul(optarg, NULL, 10);
+			break;
+
+		case 'k':
+			my_k = strtoul(optarg, NULL, 10);
+			break;
+
 		case 'p':
 			period = strtoul(optarg, NULL, 10);
 			break;
@@ -553,39 +288,10 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (fstat(fd, &buf)) {
-		perror("fstat");
-		exit(1);
-	}
-	size = buf.st_size;
+	parse_qtrace(fd);
+	do_pam();
 
-	p = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	if (p == MAP_FAILED) {
-		perror("mmap");
-		exit(1);
-	}
-
-	x = parse_header(p, &ea);
-	size -= x;
-	p += x;
-
-	while (size) {
-		/*
-		 * We sometimes see two file headers at the start of a mambo
-		 * trace, or a header in the middle of a trace. Not sure if
-		 * this is a bug, but skip over them regardless. We identify
-		 * them by a null instruction.
-		 */
-		if (!be32_to_cpup(p)) {
-			x = parse_header(p, &ea);
-			size -= x;
-			p += x;
-		}
-
-		x = parse_record(p, &ea);
-		p += x;
-		size -= x;
-	}
+	close(fd);
 
 	return 0;
 }
