@@ -480,7 +480,7 @@ bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int v
 void qtreader_destroy(struct qtreader_state *state)
 {
 	if (state->fd != -1) {
-		free(state->mem);
+		munmap(state->mem, state->size);
 		close(state->fd);
 	}
 }
