@@ -24,7 +24,7 @@
 #include "qtrace_record.h"
 #include "qtrace.h"
 #include "qtwriter.h"
-#include "endian.h"
+#include "endian-helpers.h"
 
 static int fallocate_or_ftruncate(int fd, size_t size)
 {

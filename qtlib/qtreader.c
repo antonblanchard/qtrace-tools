@@ -22,7 +22,7 @@
 #include "qtrace_record.h"
 #include "qtrace.h"
 #include "qtreader.h"
-#include "endian.h"
+#include "endian-helpers.h"
 
 #define GET8(__state) \
 ({ \
