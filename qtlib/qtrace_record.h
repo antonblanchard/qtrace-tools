@@ -19,6 +19,8 @@ struct qtrace_record {
 	uint32_t data_page_size;
 	bool is_conditional_branch;
 	bool is_unconditional_branch;
+	bool branch_taken;
+	uint64_t next_insn_addr;
 };
 
 #endif

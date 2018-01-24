@@ -366,6 +366,15 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->next_insn_addr += sizeof(uint32_t);
 	}
 
+	record->next_insn_addr = state->next_insn_addr;
+
+	if (flags & QTRACE_TERMINATION_PRESENT) {
+		if (state->next_insn_addr != record->insn_addr + sizeof(uint32_t))
+			record->branch_taken = true;
+		else
+			record->branch_taken = false;
+	}
+
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
 
