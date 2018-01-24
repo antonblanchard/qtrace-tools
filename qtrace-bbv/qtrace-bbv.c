@@ -65,7 +65,7 @@ static uint32_t basic_block_id;
 
 static struct matrix *matrix;
 
-uint64_t interval = 0;
+static uint64_t interval = 0;
 
 static uint64_t period = DEFAULT_PERIOD;
 
