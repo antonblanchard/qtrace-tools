@@ -14,7 +14,6 @@
 #include <sys/stat.h>
 
 #include "qtreader.h"
-#include "branch.h"
 
 #define OPCODE(insn)		((insn) >> 26)
 #define SUB_OPCODE(insn)	(((insn) >> 1) & 0x3ff)
@@ -33,6 +32,12 @@
 #else
 #define DBG(A...) do { } while(0)
 #endif
+
+struct stats {
+	uint64_t collisions;
+	uint64_t predictions;
+	uint64_t mispredictions;
+};
 
 struct link_stack_entry
 {
