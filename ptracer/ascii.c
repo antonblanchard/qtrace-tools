@@ -207,7 +207,7 @@ static void disasm(uint32_t *ea, unsigned int *buf, unsigned long bufsize)
 
 	INIT_DISASSEMBLE_INFO(info, ascii_fout, fprintf);
 
-	info.disassembler_options = "power8";
+	info.disassembler_options = "power9";
 	info.buffer = (bfd_byte *)buf;
 	info.buffer_vma = (unsigned long)ea;
 	info.buffer_length = bufsize;
