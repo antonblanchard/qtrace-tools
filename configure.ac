@@ -33,5 +33,7 @@ AC_C_BIGENDIAN(dnl
 	AC_DEFINE([HAVE_LITTLE_ENDIAN], [1], [Little endian])dnl
 )
 
+AS_IF([test x"${ARCH}" = "xppc"], [AC_SUBST([PTRACER], [ptracer/ptracer])], [])
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

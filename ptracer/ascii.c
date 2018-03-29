@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <limits.h>
+#include "config.h"
 #ifdef USE_BFD
 #include <bfd.h>
 #include <dis-asm.h>
