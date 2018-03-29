@@ -453,11 +453,11 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	uint64_t iar = 0;
 	uint64_t iar_rpn;
 	uint8_t iar_page_size;
-	uint64_t data_address;
+	uint64_t data_address = 0;
 	uint32_t data_rpn;
 	uint8_t data_page_size;
-	uint8_t node;
-	uint8_t term_node, term_code;
+	uint8_t node = 0;
+	uint8_t term_node = 0, term_code = 0;
 	void *q;
 	unsigned int radix_nr_data_ptes = 0;
 	uint64_t radix_insn_ptes[NR_RADIX_PTES];
