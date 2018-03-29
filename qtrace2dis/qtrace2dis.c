@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "config.h"
+
 #ifdef USE_BFD
 #include <bfd.h>
 #include <dis-asm.h>
