@@ -28,5 +28,10 @@ else
 	AC_MSG_WARN([Building without bfd library])
 fi
 
+AC_C_BIGENDIAN(dnl
+	AC_DEFINE([HAVE_BIG_ENDIAN], [1], [Big endian]),dnl
+	AC_DEFINE([HAVE_LITTLE_ENDIAN], [1], [Little endian])dnl
+)
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
