@@ -42,19 +42,19 @@ struct obj {
 	uint32_t id;
 };
 
-static const uint64_t objaddr(const struct obj *obj)
+static const uint64_t *objaddr(const struct obj *obj)
 {
-	return obj->addr;
+	return &obj->addr;
 }
 
-static size_t objhash(const uint64_t addr)
+static size_t objhash(const uint64_t *addr)
 {
-	return hash64(&addr, 1, 0);
+	return hash64(addr, 1, 0);
 }
 
-static bool cmp(const struct obj *obj, const uint64_t addr)
+static bool cmp(const struct obj *obj1, const uint64_t *addr)
 {
-	return obj->addr == addr;
+	return obj1->addr == *addr;
 }
 
 HTABLE_DEFINE_TYPE(struct obj, objaddr, objhash, cmp, htable_obj);
@@ -89,7 +89,7 @@ static void add_basic_block(uint64_t addr, uint32_t val)
 {
 	struct obj *obj;
 
-	obj = htable_obj_get(&ht, addr);
+	obj = htable_obj_get(&ht, &addr);
 	if (obj) {
 		obj->count += val;
 	} else {
