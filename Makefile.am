@@ -23,3 +23,8 @@ qtlib_tests_test3_LDADD = libqtrace.a
 
 qtlib_tests_test4_SOURCES = qtlib/tests/test4.c
 qtlib_tests_test4_LDADD = libqtrace.a
+
+bin_PROGRAMS = branch/link_stack
+
+branch_link_stack_SOURCES = branch/link_stack.c
+branch_link_stack_LDADD = libqtrace.a
