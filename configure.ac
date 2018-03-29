@@ -15,5 +15,18 @@ AM_CONDITIONAL([TARGET_PPC], [test x"$ARCH" = "xppc"])
 AC_PROG_CC
 AC_PROG_RANLIB
 
+AC_CHECK_LIB([bfd], [bfd_init])
+AC_CHECK_LIB([opcodes], [print_insn_little_powerpc])
+AC_CHECK_HEADERS([bfd.h dis-asm.h])
+if test x"${ac_cv_lib_bfd_bfd_init}" = "xyes" -a \
+	x"${ac_cv_lib_opcodes_print_insn_little_powerpc}" = "xyes" -a \
+	x"${ac_cv_header_bfd_h}" = "xyes" -a \
+	x"${ac_cv_header_dis_asm_h}" = "xyes" ; then
+	AC_DEFINE([USE_BFD], [1], [Use bfd library])
+	AC_SUBST([LIBBFD], ["-lbfd -lopcodes"])
+else
+	AC_MSG_WARN([Building without bfd library])
+fi
+
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT
