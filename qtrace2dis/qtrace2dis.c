@@ -382,7 +382,7 @@ static void __print_address(bfd_vma vma)
 
 	if (sym) {
 		unsigned long offset = vma - bfd_asymbol_value(sym);
-		char *name = bfd_asymbol_name(sym);
+		const char *name = bfd_asymbol_name(sym);
 
 		fprintf(stdout, "%016lx <%s+0x%lx> ", vma, name, offset);
 	} else {
