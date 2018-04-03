@@ -16,6 +16,14 @@ install the multiarch version of the libraries:
 sudo apt-get install binutils-multiarch-dev
 ```
 
+To build:
+
+```
+./bootstrap.sh
+./configure
+make
+```
+
 ptracer
 -------
 
