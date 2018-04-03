@@ -185,9 +185,9 @@ int main(int argc, char *argv[])
 		 * Look for bcl 20,31,$+4 - this sequence is used for
 		 * addressing and should be ignored by the link stack.
 		 */
-		if ((opcode == 18) && (AA(insn) == 0) && (LINK(insn) == 1)) {
+		if ((opcode == 16) && (AA(insn) == 0) && (LINK(insn) == 1)) {
 			if ((BO(insn) == 20) && (BI(insn) == 31) &&
-			    (BD(insn) == 4)) {
+			    (BD(insn) == 1)) {
 				DBG("bcl 20,31,$+4 at 0x%lx\n", insn_addr);
 				continue;
 			}
