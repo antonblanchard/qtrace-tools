@@ -221,6 +221,19 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 	return p - q;
 }
 
+static bool show_raw_insn;
+
+static void print_insn(uint32_t insn, unsigned int len)
+{
+	if (show_raw_insn) {
+		uint8_t *p = (uint8_t *)(uint32_t *)&insn;
+
+		fprintf(stdout, "\t");
+		for (unsigned long i = 0; i < len; i++)
+			fprintf(stdout, "%02x ", p[i]);
+	}
+}
+
 #ifdef USE_BFD
 static asymbol **syms = NULL;
 static long symcount;
@@ -348,7 +361,7 @@ static void print_address(bfd_vma vma, struct disassemble_info *info)
  * via memory, it is still in host endian format and as such we pass the
  * host endian to the disassembler.
  */
-void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
+void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 {
 	static bool disassembler_initialized = false;
 	static disassembler_ftype disassembler_p;
@@ -587,9 +600,13 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 
 #ifdef USE_BFD
 	__print_address(*ea);
+	print_insn(insn, sizeof(insn));
+	fprintf(stdout, "\t");
 	disasm(*ea, &insn, sizeof(insn));
 #else
-	fprintf(stdout, "0x%016lx\t0x%x\n", *ea, insn);
+	fprintf(stdout, "%016lx", *ea);
+	print_insn(insn, sizeof(insn));
+	fprintf(stdout, "\t0x%x", insn);
 #endif
 
 	if (verbose) {
@@ -648,6 +665,7 @@ static void usage(void)
 {
 	fprintf(stderr, "Usage: qtrace2dis [OPTION]... [FILE]\n\n");
 	fprintf(stderr, "\t-e <file>\t\tresolve symbols using this file\n");
+	fprintf(stderr, "\t-r\t\tShow raw instruction\n");
 	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
 }
 
@@ -660,7 +678,7 @@ int main(int argc, char *argv[])
 	unsigned long ea = 0;
 
 	while (1) {
-		signed char c = getopt(argc, argv, "e:v");
+		signed char c = getopt(argc, argv, "e:rv");
 		if (c < 0)
 			break;
 
@@ -670,6 +688,10 @@ int main(int argc, char *argv[])
 			syminit(optarg, "elf64-powerpc");
 			break;
 #endif
+
+		case 'r':
+			show_raw_insn = true;
+			break;
 
 		case 'v':
 			verbose++;
