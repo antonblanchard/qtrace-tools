@@ -26,70 +26,7 @@
 #include <dis-asm.h>
 #endif
 
-/* File header flags */
-#define QTRACE_HDR_MAGIC_NUMBER_PRESENT			0x8000
-#define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
-#define QTRACE_HDR_IAR_PRESENT				0x2000
-#define QTRACE_HDR_IAR_RPN_PRESENT			0x0800
-#define QTRACE_HDR_IAR_PAGE_SIZE_PRESENT		0x0040
-#define QTRACE_HDR_COMMENT_PRESENT			0x0002
-
-#define UNHANDLED_HDR_FLAGS	(~(QTRACE_HDR_MAGIC_NUMBER_PRESENT|QTRACE_HDR_VERSION_NUMBER_PRESENT|QTRACE_HDR_IAR_PRESENT|QTRACE_HDR_IAR_RPN_PRESENT|QTRACE_HDR_IAR_PAGE_SIZE_PRESENT|QTRACE_HDR_COMMENT_PRESENT))
-
-/* Primary flags */
-#define QTRACE_IAR_CHANGE_PRESENT			0x8000
-#define QTRACE_NODE_PRESENT				0x4000
-#define QTRACE_TERMINATION_PRESENT			0x2000
-#define QTRACE_PROCESSOR_PRESENT			0x1000
-#define QTRACE_DATA_ADDRESS_PRESENT			0x0800
-#define QTRACE_DATA_RPN_PRESENT				0x0200
-#define QTRACE_IAR_PRESENT				0x0040
-#define QTRACE_IAR_RPN_PRESENT				0x0010
-#define QTRACE_REGISTER_TRACE_PRESENT			0x0008
-#define QTRACE_EXTENDED_FLAGS_PRESENT			0x0001
-
-#define UNHANDLED_FLAGS	(~(QTRACE_IAR_CHANGE_PRESENT|QTRACE_NODE_PRESENT|QTRACE_TERMINATION_PRESENT|QTRACE_PROCESSOR_PRESENT|QTRACE_DATA_ADDRESS_PRESENT|QTRACE_DATA_RPN_PRESENT|QTRACE_IAR_PRESENT|QTRACE_IAR_RPN_PRESENT|QTRACE_REGISTER_TRACE_PRESENT|QTRACE_EXTENDED_FLAGS_PRESENT))
-
-/* First extended flags */
-#define QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT	0x4000
-#define QTRACE_TRACE_ERROR_CODE_PRESENT			0x1000
-#define QTRACE_IAR_PAGE_SIZE_PRESENT			0x0200
-#define QTRACE_DATA_PAGE_SIZE_PRESENT			0x0100
-#define QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT	0x0020
-#define QTRACE_FILE_HEADER_PRESENT			0x0002
-#define QTRACE_EXTENDED_FLAGS2_PRESENT			0x0001
-
-#define UNHANDLED_FLAGS2	(~(QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT|QTRACE_TRACE_ERROR_CODE_PRESENT|QTRACE_IAR_PAGE_SIZE_PRESENT|QTRACE_DATA_PAGE_SIZE_PRESENT|QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT|QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT))
-
-#define IS_RADIX(FLAGS2)	((FLAGS2) & QTRACE_EXTENDED_FLAGS2_PRESENT)
-
-/* Second extended flags */
-#define QTRACE_HOST_XLATE_MODE_DATA			0xC000
-#define QTRACE_HOST_XLATE_MODE_DATA_SHIFT		14
-#define QTRACE_GUEST_XLATE_MODE_DATA			0x3000
-#define QTRACE_GUEST_XLATE_MODE_DATA_SHIFT		12
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION		0x0C00
-#define QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT	10
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION		0x0300
-#define QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT	8
-#define QTRACE_PTCR_PRESENT				0x0080
-#define QTRACE_LPID_PRESENT				0x0040
-#define QTRACE_PID_PRESENT				0x0020
-
-#define QTRACE_XLATE_MODE_MASK				0x3
-#define QTRACE_XLATE_MODE_RADIX				0
-#define QTRACE_XLATE_MODE_HPT				1
-#define QTRACE_XLATE_MODE_REAL				2
-#define QTRACE_XLATE_MODE_NOT_DEFINED			3
-
-#define UNHANDLED_FLAGS3 0
-
-/* Termination codes */
-#define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
-#define QTRACE_UNCONDITIONAL_BRANCH			0x08
-
-/* 4 level radix */
-#define NR_RADIX_PTES	4
+#include <qtrace.h>
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
@@ -246,6 +183,10 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 		p += sizeof(uint64_t);
 	}
 
+	if (hdr_flags & QTRACE_HDR_IAR_VSID_PRESENT) {
+		p += 7;
+	}
+
 	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int nr = get_radix_insn_ptes(flags3);
 		uint64_t radix_insn_ptes[NR_RADIX_PTES];
@@ -257,6 +198,9 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 		p += sizeof(uint32_t);
 
 	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT)
+		p += sizeof(uint8_t);
+
+	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
 		p += sizeof(uint8_t);
 
 	if (flags3 & QTRACE_PTCR_PRESENT)
@@ -547,6 +491,10 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		p += sizeof(uint64_t);
 	}
 
+	if (flags & QTRACE_DATA_VSID_PRESENT) {
+		p += 7;
+	}
+
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
 		radix_nr_data_ptes = get_radix_data_ptes(flags3);
 		p += parse_radix(p, radix_nr_data_ptes, radix_data_ptes);
@@ -560,6 +508,10 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	if (flags & QTRACE_IAR_PRESENT) {
 		iar = be64_to_cpup(p);
 		p += sizeof(uint64_t);
+	}
+
+	if (flags & QTRACE_IAR_VSID_PRESENT) {
+		p += 7;
 	}
 
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
@@ -622,6 +574,14 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 
 	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
 		data_page_size = *(uint8_t *)p;
+		p += 1;
+	}
+
+	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT) {
+		p += 1;
+	}
+
+	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT) {
 		p += 1;
 	}
 

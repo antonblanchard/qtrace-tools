@@ -1,5 +1,5 @@
-#ifndef __QTRACE_H__
-#define __QTRACE_H__
+#ifndef __QTRACE__OLD_H__
+#define __QTRACE__OLD_H__
 
 #include <stdint.h>
 

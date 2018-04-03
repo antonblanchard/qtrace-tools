@@ -68,6 +68,16 @@
 	t; \
 })
 
+#define SKIP(__state, __n) \
+do { \
+	size_t n = (__n); \
+	struct qtreader_state *s = (__state); \
+	if (s->ptr + n > (s->mem + s->size)) \
+		goto err; \
+	s->ptr += n; \
+} while (0)
+
+
 static unsigned int get_radix_insn_ptes(uint16_t flags3)
 {
 	unsigned int host_mode;
@@ -195,6 +205,9 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 	if (hdr_flags & QTRACE_HDR_IAR_PRESENT)
 		state->next_insn_addr = GET64(state);
 
+	if (hdr_flags & QTRACE_HDR_IAR_VSID_PRESENT)
+		SKIP(state, 7);
+
 	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int nr = get_radix_insn_ptes(flags3);
 
@@ -215,6 +228,9 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 	} else {
 		state->next_insn_page_size_valid = false;
 	}
+
+	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
+		SKIP(state, 1);
 
 	if (flags3 & QTRACE_PTCR_PRESENT)
 		GET64(state);
@@ -346,6 +362,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		record->data_addr = GET64(state);
 	}
 
+	if (flags & QTRACE_DATA_VSID_PRESENT)
+		SKIP(state, 7);
+
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int radix_nr_data_ptes = get_radix_data_ptes(flags3);
 
@@ -374,6 +393,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		else
 			record->branch_taken = false;
 	}
+
+	if (flags & QTRACE_IAR_VSID_PRESENT)
+		SKIP(state, 7);
 
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
 		unsigned int radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
@@ -452,6 +474,12 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	} else {
 		record->data_page_size_valid = false;
 	}
+
+	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT)
+		SKIP(state, 1);
+
+	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT)
+		SKIP(state, 1);
 
 	return true;
 

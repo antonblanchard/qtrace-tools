@@ -19,24 +19,7 @@
 
 #include "branch.h"
 
-/* File header flags */
-#define QTRACE_HDR_VERSION_NUMBER_PRESENT		0x4000
-#define QTRACE_HDR_IAR_PRESENT				0x2000
-
-/* Primary flags */
-#define QTRACE_IAR_CHANGE_PRESENT			0x8000
-#define QTRACE_NODE_PRESENT				0x4000
-#define QTRACE_TERMINATION_PRESENT			0x2000
-#define QTRACE_DATA_ADDRESS_PRESENT			0x0800
-#define QTRACE_IAR_PRESENT				0x0040
-#define QTRACE_EXTENDED_FLAGS_PRESENT			0x0001
-
-/* First extended flags */
-#define QTRACE_FILE_HEADER_PRESENT			0x0002
-
-/* Termination codes */
-#define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
-#define QTRACE_UNCONDITIONAL_BRANCH			0x08
+#include <qtrace.h>
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
