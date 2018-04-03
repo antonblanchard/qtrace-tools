@@ -11,7 +11,7 @@ int main(void)
 	memset(&state, 0, sizeof(state));
 	state.version = 0x10000000;
 
-	qtwriter_open(&state, "test.qt");
+	qtwriter_open(&state, "test.qt", 0);
 
 	memset(&record, 0, sizeof(record));
 	record.insn = 0x60000000;
