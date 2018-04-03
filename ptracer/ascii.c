@@ -201,36 +201,53 @@ static void print_address(bfd_vma vma, struct disassemble_info *info)
 	__print_address(vma);
 }
 
-static void disasm(uint32_t *ea, unsigned int *buf, unsigned long bufsize)
+/*
+ * The qtrace format writes the instruction in big endian format, but we
+ * converted it to host endian as we read it.  Since we pass the instruction in
+ * via memory, it is still in host endian format and as such we pass the
+ * host endian to the disassembler.
+ */
+void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
 {
-	disassemble_info info;
+	static bool disassembler_initialized = false;
+	static disassembler_ftype disassembler_p;
+	static disassemble_info info;
 	int i;
 
-	INIT_DISASSEMBLE_INFO(info, ascii_fout, fprintf);
+	if (!disassembler_initialized) {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		bfd_boolean is_big = false;
+#else
+		bfd_boolean is_big = true;
+#endif
 
-	info.disassembler_options = "power9";
+		disassembler_p = disassembler(bfd_arch_powerpc, is_big, bfd_mach_ppc64, NULL);
+
+		init_disassemble_info(&info, stdout, (fprintf_ftype)fprintf);
+		info.disassembler_options = "power9";
+		info.print_address_func = print_address;
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		info.endian = BFD_ENDIAN_LITTLE;
+#else
+		info.endian = BFD_ENDIAN_BIG;
+#endif
+		info.mach = bfd_mach_ppc64;
+		info.arch = bfd_arch_powerpc;
+		disassemble_init_for_target(&info);
+
+		disassembler_initialized = true;
+	}
+
 	info.buffer = (bfd_byte *)buf;
-	info.buffer_vma = (unsigned long)ea;
+	info.buffer_vma = ea;
 	info.buffer_length = bufsize;
-	info.print_address_func = print_address;
 
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	info.endian = BFD_ENDIAN_LITTLE;
-#else
-	info.endian = BFD_ENDIAN_BIG;
-#endif
-	info.mach = bfd_mach_ppc64;
-
-	info.arch = bfd_arch_powerpc;
-	disassemble_init_for_target(&info);
-
-	i = 0;
-	while (i < bufsize) {
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-		i += print_insn_little_powerpc((unsigned long)ea, &info);
-#else
-		i += print_insn_big_powerpc((unsigned long)ea, &info);
-#endif
+	if (!disassembler_p) {
+		fprintf(stdout, "0x%x", *buf);
+	} else {
+		i = 0;
+		while (i < bufsize)
+			i += disassembler_p((unsigned long)ea, &info);
 	}
 }
 #endif
@@ -260,7 +277,7 @@ void ascii_add_record(pid_t pid, uint32_t insn, uint32_t *insn_addr)
 	}
 
 	__print_address((bfd_vma)insn_addr);
-	disasm(insn_addr, &insn, sizeof(insn));
+	disasm((unsigned long)insn_addr, &insn, sizeof(insn));
 	fprintf(ascii_fout, "\n");
 #else
 	fprintf(ascii_fout, "%p\t0x%x\n", insn_addr, insn);
