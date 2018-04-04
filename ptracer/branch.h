@@ -12,21 +12,35 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define OPCODE(insn)            ((insn) >> 26)
+#define SUB_OPCODE(insn)        (((insn) >> 1) & 0x3ff)
+#define BO(insn)                (((insn) >> 21) & 0x1f)
+
+/*
+ * A conditional branch is unconditional if the BO field is 0b1X1XX
+ */
+static bool branch_conditional_is_conditional(uint32_t insn)
+{
+	return !!((BO(insn) & 0x14) != 0x14);
+}
+
 static inline bool is_conditional_branch(uint32_t insn)
 {
-	int opcode = insn >> (32-6);
+	uint32_t opcode = OPCODE(insn);
 
-	if (opcode == 16)
+	if ((opcode == 16) && branch_conditional_is_conditional(insn))
 		return true;
 
 	if (opcode == 19) {
-		int sub_opcode = (insn >> 1) & 0x3ff;
+		uint32_t sub_opcode = SUB_OPCODE(insn);
 
 		switch (sub_opcode) {
 		case 16:	/* bclr */
 		case 528:	/* bcctr */
 		case 560:	/* bctar */
-			return true;
+			if (branch_conditional_is_conditional(insn))
+				return true;
+			break;
 		}
 	}
 
@@ -35,21 +49,32 @@ static inline bool is_conditional_branch(uint32_t insn)
 
 static inline bool is_unconditional_branch(uint32_t insn)
 {
-	int opcode = insn >> (32-6);
+	uint32_t opcode = insn >> (32-6);
+
+	if ((opcode == 16) && !branch_conditional_is_conditional(insn))
+		return true;
 
 	/* Include sc, scv */
 	if (opcode == 17 || opcode == 18)
 		return true;
 
 	if (opcode == 19) {
-		int sub_opcode = (insn >> 1) & 0x3ff;
+		uint32_t sub_opcode = SUB_OPCODE(insn);
 
 		switch (sub_opcode) {
+		case 16:	/* bclr */
+		case 528:	/* bcctr */
+		case 560:	/* bctar */
+			if (!branch_conditional_is_conditional(insn))
+				return true;
+			break;
+
 		case 50:	/* rfi */
 		case 18:	/* rfid */
 		case 274:	/* hrfid */
 		case 82:	/* rfscv */
 			return true;
+			break;
 		}
 	}
 
