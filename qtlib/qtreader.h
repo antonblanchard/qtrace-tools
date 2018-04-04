@@ -6,6 +6,8 @@
 
 #include "qtrace_record.h"
 
+#define QTREADER_FLAGS_BRANCH	(1 << 0)
+
 struct qtreader_state {
 	uint32_t version;
 	uint32_t magic;
@@ -19,6 +21,7 @@ struct qtreader_state {
 	size_t size;
 	unsigned int verbose;
 	int fd;
+	uint64_t flags;
 };
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);
@@ -32,6 +35,16 @@ static inline uint32_t qtreader_version(struct qtreader_state *state)
 static inline uint32_t qtreader_magic(struct qtreader_state *state)
 {
 	return state->magic;
+}
+
+static inline void qtreader_set_branch_info(struct qtreader_state *state)
+{
+	state->flags |= QTREADER_FLAGS_BRANCH;
+}
+
+static inline void qtreader_clear_branch_info(struct qtreader_state *state)
+{
+	state->flags &= ~QTREADER_FLAGS_BRANCH;
 }
 
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record);

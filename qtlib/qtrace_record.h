@@ -17,9 +17,28 @@ struct qtrace_record {
 	uint64_t data_rpn;
 	bool data_page_size_valid;
 	uint32_t data_page_size;
-	bool is_conditional_branch;
-	bool is_unconditional_branch;
+
+	bool branch;
+	bool conditional_branch;
+
+	/*
+	 * The rest of the fields are populated by qtreader if enabled,
+	 * but are not required by qtwriter.
+	 */
 	bool branch_taken;
+	bool branch_direct;
+	enum branch_type {
+		BRANCH,
+		CALL,
+		RETURN,
+		ADDRESSING,
+		SYSTEM_CALL_EXCEPTION,
+		ASYNC_EXCEPTION,
+		EXCEPTION_RETURN
+	} branch_type;
+
+	/* We might want to add BH target unpredictable and static branch hints */
+
 	uint64_t next_insn_addr;
 };
 

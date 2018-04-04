@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <assert.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -271,6 +272,105 @@ bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, u
 	return true;
 }
 
+#define OPCODE(insn)		((insn) >> 26)
+#define SUB_OPCODE(insn)	(((insn) >> 1) & 0x3ff)
+
+#define LINK(insn)		((insn) & 0x1)
+#define AA(insn)		(((insn) >> 1) & 0x1)
+#define BH(insn)		(((insn) >> 11) & 0x3)
+#define BO(insn)		(((insn) >> 21) & 0x1f)
+#define BI(insn)		(((insn) >> 16) & 0x1f)
+#define BD(insn)		(((insn) >> 2) & 0x3fff)
+
+static bool branch_conditional_is_conditional(uint32_t insn)
+{
+	return !!((BO(insn) & 0x14) != 0x14);
+}
+
+static void annotate_branch(struct qtrace_record *record)
+{
+	uint32_t insn = record->insn;
+	uint32_t opcode = OPCODE(insn);
+
+	/*
+	 * Look for bcl 20,31,$+4 - this sequence is special and used for
+	 * addressing.
+	 */
+	if ((opcode == 16) && (AA(insn) == 0) && (LINK(insn) == 1)) {
+		if ((BO(insn) == 20) && (BI(insn) == 31) && (BD(insn) == 1)) {
+			assert(record->conditional_branch == false);
+			record->branch_direct = true;
+			record->branch_type = ADDRESSING;
+			return;
+		}
+	}
+
+	record->branch_direct = true;
+	record->branch_type = BRANCH;
+
+	if (LINK(insn))
+		record->branch_type = CALL;
+
+	/* Unconditional branches */
+	if (opcode == 18) {
+		assert(record->conditional_branch == false);
+		return;
+	}
+
+	/* Conditional branches */
+	if (opcode == 16) {
+		if (record->conditional_branch != true)
+			printf("%lx\n", record->insn_addr);
+		assert(record->conditional_branch == true);
+		return;
+	}
+
+	/* sc, scv */
+	if (opcode == 17 || opcode == 18) {
+		record->branch_type = SYSTEM_CALL_EXCEPTION;
+		/* Bug in mambo? */
+		//assert(record->conditional_branch == false);
+		return;
+	}
+
+	/* branch to LR, CTR and TAR */
+	if (opcode == 19) {
+		switch (SUB_OPCODE(insn)) {
+		/* bclr, bclrl */
+		case 16:
+			if (BH(insn) == 0)
+				record->branch_type = RETURN;
+
+			assert(branch_conditional_is_conditional(insn) ==
+			       record->conditional_branch);
+
+			return;
+
+		/* bcctr, bctar */
+		case 528:
+		case 560:
+			record->branch_direct = false;
+
+			assert(branch_conditional_is_conditional(insn) ==
+			       record->conditional_branch);
+
+			return;
+
+		case 50:	/* rfi */
+		case 18:	/* rfid */
+		case 274:	/* hrfid */
+		case 82:	/* rfscv */
+			record->branch_type = EXCEPTION_RETURN;
+			/* bug in mambo? */
+			//assert(record->conditional_branch == false);
+			return;
+		}
+	}
+
+	/* Most likely a decrementer, page fault etc */
+	record->branch_type = ASYNC_EXCEPTION;
+}
+
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record)
 {
 	uint16_t flags, flags2 = 0, flags3 = 0;
@@ -339,19 +439,23 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	if (flags & QTRACE_TERMINATION_PRESENT) {
 		uint8_t termination_code;
 
+		record->branch = true;
+
 		GET8(state);
 		termination_code = GET8(state);
 
 		if ((termination_code == QTRACE_EXCEEDED_MAX_INST_DEPTH) ||
 		    (termination_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH))
-			record->is_conditional_branch = true;
-		else
-			record->is_conditional_branch = false;
+			record->conditional_branch = true;
+		else if (termination_code == QTRACE_UNCONDITIONAL_BRANCH)
+			record->conditional_branch = false;
+		else {
+			printf("Inconsistent branch\n");
+			goto err;
+		}
 
-		if (termination_code == QTRACE_UNCONDITIONAL_BRANCH)
-			record->is_unconditional_branch = true;
-		else
-			record->is_unconditional_branch = false;
+		if (state->flags & QTREADER_FLAGS_BRANCH)
+			annotate_branch(record);
 	}
 
 	if (flags & QTRACE_PROCESSOR_PRESENT)

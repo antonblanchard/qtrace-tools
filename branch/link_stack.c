@@ -15,16 +15,6 @@
 
 #include "qtreader.h"
 
-#define OPCODE(insn)		((insn) >> 26)
-#define SUB_OPCODE(insn)	(((insn) >> 1) & 0x3ff)
-
-#define LINK(insn)		((insn) & 0x1)
-#define AA(insn)		(((insn) >> 1) & 0x1)
-#define BH(insn)		(((insn) >> 11) & 0x3)
-#define BO(insn)		(((insn) >> 21) & 0x1f)
-#define BI(insn)		(((insn) >> 16) & 0x1f)
-#define BD(insn)		(((insn) >> 2) & 0x3fff)
-
 #define DEBUG
 
 #ifdef DEBUG
@@ -130,23 +120,6 @@ int main(void)
 
 #else
 
-static void check_bh_bits(uint32_t insn, unsigned long insn_addr)
-{
-	uint32_t bh_bits = BH(insn);
-
-	if (SUB_OPCODE(insn) != 16 && BH(insn) == 0x1)
-		printf("Reserved BH field in insn 0x%08x at 0x%lx\n", insn,
-			insn_addr);
-
-	if (bh_bits == 0x2)
-		printf("Reserved BH field in insn 0x%08x at 0x%lx\n", insn,
-			insn_addr);
-
-	if (bh_bits == 0x3)
-		printf("Unpredictable BH field in insn 0x%08x at 0x%lx\n", insn,
-			insn_addr);
-}
-
 int main(int argc, char *argv[])
 {
 	int fd;
@@ -172,65 +145,26 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	qtreader_set_branch_info(&state);
+
 	while (qtreader_next_record(&state, &record) == true) {
-		uint32_t insn = record.insn;
 		uint64_t insn_addr = record.insn_addr;
 		uint64_t next_insn_addr = record.next_insn_addr;
-		uint32_t opcode = OPCODE(insn);
 
 		if (record.branch_taken == false)
 			continue;
 
-		/*
-		 * Look for bcl 20,31,$+4 - this sequence is used for
-		 * addressing and should be ignored by the link stack.
-		 */
-		if ((opcode == 16) && (AA(insn) == 0) && (LINK(insn) == 1)) {
-			if ((BO(insn) == 20) && (BI(insn) == 31) &&
-			    (BD(insn) == 1)) {
-				DBG("bcl 20,31,$+4 at 0x%lx\n", insn_addr);
-				continue;
-			}
+		if (record.branch_type == ADDRESSING)
+			DBG("ADD %lx\n", insn_addr);
+
+		if (record.branch_type == CALL) {
+			link_stack_push(p, insn_addr);
+			DBG("PSH %lx\n", insn_addr);
 		}
 
-		/* bl, bla, bcl, bcla */
-		if (opcode == 18 || opcode == 16) {
-			if (LINK(insn)) {
-				DBG("PSH %lx\n", insn_addr);
-				link_stack_push(p, insn_addr);
-			}
-		}
-
-		if (opcode == 19) {
-			switch (SUB_OPCODE(insn)) {
-			/* bclr, bclrl */
-			case 16:
-				check_bh_bits(insn, insn_addr);
-
-				if (BH(insn) != 1) {
-					bool result = link_stack_pop(p,
-								next_insn_addr);
-					DBG("POP %lx %d\n", insn_addr,
-						result);
-				}
-
-				if (LINK(insn)) {
-					link_stack_push(p, insn_addr);
-					DBG("PSH %lx\n", insn_addr);
-				}
-				break;
-
-			/* bcctrl, bctarl */
-			case 528:
-			case 560:
-				check_bh_bits(insn, insn_addr);
-
-				if (LINK(insn)) {
-					link_stack_push(p, insn_addr);
-					DBG("PSH %lx\n", insn_addr);
-				}
-				break;
-			}
+		if (record.branch_type == RETURN) {
+			bool result = link_stack_pop(p, next_insn_addr);
+			DBG("POP %lx %d\n", insn_addr, result);
 		}
 	}
 

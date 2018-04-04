@@ -217,7 +217,7 @@ static void parse_qtrace(int fd)
 
 		bb_size++;
 		/* What about exceptions? */
-		if (record.is_conditional_branch || record.is_unconditional_branch) {
+		if (record.branch) {
 			if (verbose)
 				printf("BB 0x%lx length %d\n", ea, bb_size);
 			add_basic_block(ea, bb_size);

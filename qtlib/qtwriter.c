@@ -225,8 +225,7 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		flags2 |= QTRACE_IAR_PAGE_SIZE_PRESENT;
 
 	/* Some sort of branch */
-	if (state->prev_record.is_conditional_branch == true ||
-	    state->prev_record.is_unconditional_branch == true ||
+	if (state->prev_record.branch == true ||
 	    record->insn_addr != (state->prev_record.insn_addr + 4)) {
 
 		is_branch = true;
@@ -256,11 +255,13 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		put8(state, 0);
 
 		/* termination code */
-		if (state->prev_record.is_conditional_branch == true)
-			//termination_code = QTRACE_EXCEEDED_MAX_INST_DEPTH;
-			termination_code = QTRACE_EXCEEDED_MAX_BRANCH_DEPTH;
-		else if (state->prev_record.is_unconditional_branch == true)
-			termination_code = QTRACE_UNCONDITIONAL_BRANCH;
+		if (state->prev_record.branch) {
+			if (state->prev_record.conditional_branch == true)
+				//termination_code = QTRACE_EXCEEDED_MAX_INST_DEPTH;
+				termination_code = QTRACE_EXCEEDED_MAX_BRANCH_DEPTH;
+			else
+				termination_code = QTRACE_UNCONDITIONAL_BRANCH;
+		}
 
 		put8(state, termination_code);
 	}
