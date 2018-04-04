@@ -18,13 +18,14 @@ AC_PROG_RANLIB
 AC_SEARCH_LIBS([bfd_init], [bfd-multiarch bfd])
 AC_SEARCH_LIBS([disassembler], [opcodes-multiarch opcodes])
 AC_CHECK_HEADERS([bfd.h dis-asm.h])
-if test x"${ac_cv_search_bfd_init}" != "xno" -a \
-	x"${ac_cv_search_disassembler}" != "xno" -a \
-	x"${ac_cv_header_bfd_h}" = "xyes" -a \
-	x"${ac_cv_header_dis_asm_h}" = "xyes" ; then
-	AC_DEFINE([USE_BFD], [1], [Use bfd library])
+if test x"${ac_cv_search_bfd_init}" = "xno" -o \
+	x"${ac_cv_search_disassembler}" = "xno" ; then
+	AC_MSG_WARN([Missing bfd library, install binutils-dev package])
+elif test x"${ac_cv_header_bfd_h}" = "xno" -o \
+	x"${ac_cv_header_dis_asm_h}" = "xno" ; then
+	AC_MSG_WARN([Missing bfd headers, install binutils-dev package])
 else
-	AC_MSG_WARN([Building without bfd library])
+	AC_DEFINE([USE_BFD], [1], [Use bfd library])
 fi
 
 AC_C_BIGENDIAN(dnl
