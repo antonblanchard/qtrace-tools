@@ -32,7 +32,7 @@ branch_link_stack_SOURCES = branch/link_stack.c
 branch_link_stack_LDADD = libqtrace.a
 
 qtrace2dis_qtrace2dis_SOURCES = qtrace2dis/qtrace2dis.c
-qtrace2dis_qtrace2dis_LDADD = libqtrace.a @LIBBFD@
+qtrace2dis_qtrace2dis_LDADD = libqtrace.a
 
 qtrace_bbv_qtrace_bbv_SOURCES = \
 	qtrace-bbv/ccan/hash/hash.c \
@@ -47,4 +47,4 @@ ptracer_ptracer_SOURCES = \
 	ptracer/ascii.c ptracer/main.c ptracer/perf_events.c ptracer/pids.c \
 	ptracer/ppc_storage.c ptracer/ptrace.c ptracer/qtrace.c \
 	ptracer/single_step.c
-ptracer_ptracer_LDADD = libqtrace.a @LIBBFD@
+ptracer_ptracer_LDADD = libqtrace.a
