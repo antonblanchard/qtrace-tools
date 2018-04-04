@@ -4,6 +4,16 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+enum branch_type {
+	BRANCH,
+	CALL,
+	RETURN,
+	ADDRESSING,
+	SYSTEM_CALL_EXCEPTION,
+	ASYNC_EXCEPTION,
+	EXCEPTION_RETURN
+};
+
 struct qtrace_record {
 	uint32_t insn;
 	uint64_t insn_addr;
@@ -27,15 +37,7 @@ struct qtrace_record {
 	 */
 	bool branch_taken;
 	bool branch_direct;
-	enum branch_type {
-		BRANCH,
-		CALL,
-		RETURN,
-		ADDRESSING,
-		SYSTEM_CALL_EXCEPTION,
-		ASYNC_EXCEPTION,
-		EXCEPTION_RETURN
-	} branch_type;
+	enum branch_type branch_type;
 
 	/* We might want to add BH target unpredictable and static branch hints */
 
