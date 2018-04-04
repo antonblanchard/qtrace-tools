@@ -15,15 +15,14 @@ AM_CONDITIONAL([TARGET_PPC], [test x"$ARCH" = "xppc"])
 AC_PROG_CC
 AC_PROG_RANLIB
 
-AC_CHECK_LIB([bfd], [bfd_init])
-AC_CHECK_LIB([opcodes], [disassembler])
+AC_SEARCH_LIBS([bfd_init], [bfd-multiarch bfd])
+AC_SEARCH_LIBS([disassembler], [opcodes-multiarch opcodes])
 AC_CHECK_HEADERS([bfd.h dis-asm.h])
-if test x"${ac_cv_lib_bfd_bfd_init}" = "xyes" -a \
-	x"${ac_cv_lib_opcodes_disassembler}" = "xyes" -a \
+if test x"${ac_cv_search_bfd_init}" != "xno" -a \
+	x"${ac_cv_search_disassembler}" != "xno" -a \
 	x"${ac_cv_header_bfd_h}" = "xyes" -a \
 	x"${ac_cv_header_dis_asm_h}" = "xyes" ; then
 	AC_DEFINE([USE_BFD], [1], [Use bfd library])
-	AC_SUBST([LIBBFD], ["-lbfd -lopcodes"])
 else
 	AC_MSG_WARN([Building without bfd library])
 fi
