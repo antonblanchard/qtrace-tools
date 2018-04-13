@@ -368,7 +368,18 @@ static bool extended_62(uint32_t insn, unsigned long *gprs,
 bool is_storage_insn(uint32_t insn, unsigned long *gprs, unsigned long *addr,
 		     unsigned long *size)
 {
+	unsigned long _gprs[32];
+	unsigned long _addr;
+	unsigned long _size;
+
 	int opcode = PPC_OPC(insn);
+
+	if (!gprs) {
+		/* Unused */
+		gprs = _gprs;
+		addr = &_addr;
+		size = &_size;
+	}
 
 	*addr = 0;
 	*size = 0;

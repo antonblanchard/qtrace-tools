@@ -38,6 +38,7 @@
 #define be64_to_cpup(A)	(*(uint64_t *)A)
 #endif
 
+static int qtbuild;
 static unsigned int verbose;
 static uint32_t version;
 
@@ -599,10 +600,34 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	}
 
 #ifdef USE_BFD
-	__print_address(*ea);
-	print_insn(insn, sizeof(insn));
-	fprintf(stdout, "\t");
-	disasm(*ea, &insn, sizeof(insn));
+	if (qtbuild) {
+		static int first = 1;
+		static unsigned long last_ea;
+		static int i_num = 0;
+
+		if (first) {
+			first = 0;
+			fprintf(stdout, "#include \"qtb.h\"\n");
+			fprintf(stdout, "start_trace\t0x%016lx\n", *ea);
+		} else {
+			if (last_ea + sizeof(uint32_t) != *ea)
+				fprintf(stdout, "branch_to_abs\t0x%016lx\n", *ea);
+		}
+
+		last_ea = *ea;
+
+		if (i_num % 10 == 0)
+			fprintf(stdout, "# instruction number %d\n", i_num);
+		i_num++;
+		disasm(*ea, &insn, sizeof(insn));
+		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
+			fprintf(stdout, "\t; ldst 0x%016lx", data_address);
+	} else {
+		__print_address(*ea);
+		print_insn(insn, sizeof(insn));
+		fprintf(stdout, "\t");
+		disasm(*ea, &insn, sizeof(insn));
+	}
 #else
 	fprintf(stdout, "%016lx", *ea);
 	print_insn(insn, sizeof(insn));
@@ -664,9 +689,12 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 static void usage(void)
 {
 	fprintf(stderr, "Usage: qtrace2dis [OPTION]... [FILE]\n\n");
-	fprintf(stderr, "\t-e <file>\t\tresolve symbols using this file\n");
 	fprintf(stderr, "\t-r\t\tShow raw instruction\n");
 	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
+#ifdef USE_BFD
+	fprintf(stderr, "\t-e <file>\t\tresolve symbols using this file\n");
+	fprintf(stderr, "\t-b\t\t\toutput qtbuild assembly\n");
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -678,7 +706,7 @@ int main(int argc, char *argv[])
 	unsigned long ea = 0;
 
 	while (1) {
-		signed char c = getopt(argc, argv, "e:rv");
+		signed char c = getopt(argc, argv, "e:rvb");
 		if (c < 0)
 			break;
 
@@ -687,8 +715,10 @@ int main(int argc, char *argv[])
 		case 'e':
 			syminit(optarg, "elf64-powerpc");
 			break;
+		case 'b':
+			qtbuild = 1;
+			break;
 #endif
-
 		case 'r':
 			show_raw_insn = true;
 			break;

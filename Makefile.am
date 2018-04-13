@@ -25,7 +25,7 @@ qtlib_tests_test4_SOURCES = qtlib/tests/test4.c
 qtlib_tests_test4_LDADD = libqtrace.a
 
 bin_PROGRAMS = branch/link_stack qtrace2dis/qtrace2dis qtrace-bbv/qtrace-bbv \
-	       $(PTRACER)
+	       qtbuild/qtbuild $(PTRACER)
 EXTRA_PROGRAMS = ptracer/ptracer
 
 branch_link_stack_SOURCES = branch/link_stack.c
@@ -42,6 +42,9 @@ qtrace_bbv_qtrace_bbv_SOURCES = \
 	qtrace-bbv/qtrace-bbv.c
 qtrace_bbv_qtrace_bbv_CFLAGS = $(AM_CFLAGS) -I$(top_srcdir)/qtrace-bbv
 qtrace_bbv_qtrace_bbv_LDADD = libqtrace.a
+
+qtbuild_qtbuild_SOURCES = qtbuild/qtbuild.c
+qtbuild_qtbuild_LDADD = libqtrace.a
 
 ptracer_ptracer_SOURCES = \
 	ptracer/ascii.c ptracer/main.c ptracer/perf_events.c ptracer/pids.c \
