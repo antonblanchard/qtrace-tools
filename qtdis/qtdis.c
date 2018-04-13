@@ -41,6 +41,7 @@
 static int qtbuild;
 static unsigned int verbose;
 static uint32_t version;
+static int dump_nr;
 
 static unsigned int get_radix_insn_ptes(uint16_t flags3)
 {
@@ -599,6 +600,33 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		p += 1;
 	}
 
+	switch (dump_nr) {
+	case 0:
+		break;
+	case 1:
+		fprintf(stdout, "IFTCH EA:0x%016lx", *ea);
+		if (flags & QTRACE_IAR_RPN_PRESENT)
+			fprintf(stdout, " RA:0x%016lx", (unsigned long)iar_rpn << 12);
+		if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
+			fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << iar_page_size);
+		fprintf(stdout, "\n");
+
+		if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
+			fprintf(stdout, "LDST EA:0x%016lx", data_address);
+			if (flags & QTRACE_DATA_RPN_PRESENT)
+				fprintf(stdout, " RA:0x%016lx", (unsigned long)data_rpn << 12);
+			if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT)
+				fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << data_page_size);
+			fprintf(stdout, "\n");
+		}
+		break;
+	default:
+		fprintf(stdout, "Unknown dump strategy %d\n", dump_nr);
+		exit(1);
+	}
+	if (dump_nr)
+		goto next;
+
 #ifdef USE_BFD
 	if (qtbuild) {
 		static int first = 1;
@@ -677,7 +705,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	}
 
 	fprintf(stdout, "\n");
-
+next:
 	if (flags & QTRACE_IAR_PRESENT)
 		*ea = iar;
 	else
@@ -695,6 +723,8 @@ static void usage(void)
 	fprintf(stderr, "\t-e <file>\t\tresolve symbols using this file\n");
 	fprintf(stderr, "\t-b\t\t\toutput qtbuild assembly\n");
 #endif
+	fprintf(stderr, "\t-d <nr>\t\t\tdump with strategy nr\n");
+	fprintf(stderr, "\t       \t\t\t1. ifetch, load, store addresses\n");
 }
 
 int main(int argc, char *argv[])
@@ -706,7 +736,7 @@ int main(int argc, char *argv[])
 	unsigned long ea = 0;
 
 	while (1) {
-		signed char c = getopt(argc, argv, "e:rvb");
+		signed char c = getopt(argc, argv, "e:d:rvb");
 		if (c < 0)
 			break;
 
@@ -719,6 +749,9 @@ int main(int argc, char *argv[])
 			qtbuild = 1;
 			break;
 #endif
+		case 'd':
+			dump_nr = atoi(optarg);
+			break;
 		case 'r':
 			show_raw_insn = true;
 			break;
