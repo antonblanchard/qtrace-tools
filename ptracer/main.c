@@ -23,6 +23,7 @@ static struct qtwriter_state qtwr;
 #include "single_step.h"
 #include "ascii.h"
 #include "ppc_storage.h"
+#include "pagemap.h"
 
 #define NR_FILES (16*1024)
 
@@ -73,6 +74,7 @@ static char *ascii_logfile = NULL;
 static char *qtrace_logfile = NULL;
 static unsigned long nr_insns_skip = 0;
 static unsigned long nr_insns_left = -1UL;
+static bool do_xlate = false;
 
 struct register_state {
 	struct pt_regs regs;
@@ -250,6 +252,7 @@ static void print_insn(pid_t pid, uint32_t *pc)
 		int ret;
 		struct pt_regs regs;
 		unsigned long addr = 0, size = 0;
+		unsigned long pa, pshift;
 
 		ret = ptrace(PTRACE_GETREGS, pid, NULL, &regs);
 		if (ret) {
@@ -258,12 +261,26 @@ static void print_insn(pid_t pid, uint32_t *pc)
 		}
 
 		memset(&qtr, 0, sizeof(qtr));
+
 		qtr.insn = insn;
+
 		qtr.insn_addr = (unsigned long)pc;
+		if (do_xlate && ea_to_pa(qtr.insn_addr, &pa, &pshift, true)) {
+			qtr.insn_rpn = pa >> 12;
+			qtr.insn_rpn_valid = true;
+			qtr.insn_page_size = pshift;
+			qtr.insn_page_size_valid = true;
+		}
 
 		if (is_storage_insn(insn, &regs.gpr[0], &addr, &size)) {
 			qtr.data_addr = addr;
 			qtr.data_addr_valid = true;
+			if (do_xlate && ea_to_pa(addr, &pa, &pshift, false)) {
+				qtr.data_rpn = pa >> 12;
+				qtr.data_rpn_valid = true;
+				qtr.data_page_size = pshift;
+				qtr.data_page_size_valid = true;
+			}
 		}
 
 		qtr.branch = is_branch(insn);
@@ -282,9 +299,12 @@ void usage(void)
 	fprintf(stderr, "Usage: ptracer [OPTION] PROG [ARGS]\n");
 	fprintf(stderr, "\t-a logfile	ASCII disassembly to file\n");
 	fprintf(stderr, "\t-q logfile	QTRACE output to file\n");
+	fprintf(stderr, "\t-c chkdir	checkpoint directory\n");
 	fprintf(stderr, "\t-p pid	pid to attach to\n");
 	fprintf(stderr, "\t-n nr_insns	Number of instructions to trace\n");
 	fprintf(stderr, "\t-s nr_insns	Number of instructions to skip\n");
+	fprintf(stderr, "\t-x		Do xlate to get physical addresses\n");
+	fprintf(stderr, "\t-r		Register dump (ASCII log only)\n");
 }
 
 int main(int argc, char *argv[])
@@ -297,7 +317,7 @@ int main(int argc, char *argv[])
 #endif
 
 	while (1) {
-		signed char c = getopt(argc, argv, "+a:q:p:fn:s:rc:h");
+		signed char c = getopt(argc, argv, "+a:q:p:fn:s:rxc:h");
 		if (c < 0)
 			break;
 
@@ -325,6 +345,10 @@ int main(int argc, char *argv[])
 
 		case 'r':
 			register_dump = true;
+			break;
+
+		case 'x':
+			do_xlate = true;
 			break;
 
 		case 's':
@@ -375,6 +399,13 @@ int main(int argc, char *argv[])
 			nr_insns_skip = FAST_FORWARD_COUNT;
 	} else {
 		tracing_pid = do_exec(&argv[optind]);
+	}
+
+	if (do_xlate) {
+		if (!init_pagemaps(tracing_pid, 64*1024, 2*1024*1024)) {
+			fprintf(stderr, "could not do xlate\n");
+			do_xlate = false;
+		}
 	}
 
 	if (nr_insns_skip)

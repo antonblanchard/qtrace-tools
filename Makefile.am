@@ -48,6 +48,6 @@ qtbuild_qtbuild_LDADD = libqtrace.a
 
 ptracer_ptracer_SOURCES = \
 	ptracer/ascii.c ptracer/main.c ptracer/perf_events.c ptracer/pids.c \
-	ptracer/ppc_storage.c ptracer/ptrace.c ptracer/qtrace.c \
-	ptracer/single_step.c
+	ptracer/ppc_storage.c ptracer/ptrace.c \
+	ptracer/single_step.c ptracer/pagemap.c
 ptracer_ptracer_LDADD = libqtrace.a
