@@ -688,7 +688,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 
 static void usage(void)
 {
-	fprintf(stderr, "Usage: qtrace2dis [OPTION]... [FILE]\n\n");
+	fprintf(stderr, "Usage: qtdis [OPTION]... [FILE]\n\n");
 	fprintf(stderr, "\t-r\t\tShow raw instruction\n");
 	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
 #ifdef USE_BFD

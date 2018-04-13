@@ -1,7 +1,7 @@
 /*
  * Create a qtrace from a set of asm statements.
  *
- * These can be generated from a qtrace with qtrace2dis (qtbuild output),
+ * These can be generated from a qtrace with qtdis (qtbuild output),
  * edited, then turned back into a qtrace with qtbuild.
  *
  * Build the qtrace tool with:
@@ -15,7 +15,7 @@
  *
  * Turn a qtrace into a qtbuild .S file:
  *
- * ../qtrace2dis/qtrace2dis -b spinlock.qt spinlock2.S
+ * ../qtdis/qtdis -b spinlock.qt spinlock2.S
  * vi spinlock2.S # edit and save
  * make CC=powerpc64le-linux-gnu-gcc spinlock2.qt
  *
