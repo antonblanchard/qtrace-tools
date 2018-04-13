@@ -11,11 +11,16 @@
 #include <sys/resource.h>
 #include <linux/ptrace.h>
 
+#include <qtwriter.h>
+
+#include "../qtlib/branch.h"
+
+static struct qtwriter_state qtwr;
+
 #include "pids.h"
 #include "ptrace.h"
 #include "perf_events.h"
 #include "single_step.h"
-#include "qtrace.h"
 #include "ascii.h"
 #include "ppc_storage.h"
 
@@ -64,6 +69,19 @@ static void setrlimit_open_files(void)
 	}
 }
 
+static char *ascii_logfile = NULL;
+static char *qtrace_logfile = NULL;
+static unsigned long nr_insns_skip = 0;
+static unsigned long nr_insns_left = -1UL;
+
+struct register_state {
+	struct pt_regs regs;
+	__int128 vmx_regs[32+2];
+	__int128 vsx_regs[32];
+	unsigned int fpscr;
+};
+static struct register_state prev_state;
+
 static void do_checkpoint(pid_t pid, char *dir)
 {
 	char pidstr[8];
@@ -80,21 +98,10 @@ static void do_checkpoint(pid_t pid, char *dir)
 		perror("do_checkpoint: execl");
 	}
 
+	if (qtrace_logfile)
+		qtwriter_close(&qtwr);
 	exit(0);
 }
-
-static char *ascii_logfile = NULL;
-static char *qtrace_logfile = NULL;
-static unsigned long nr_insns_skip = 0;
-static unsigned long nr_insns_left = -1UL;
-
-struct register_state {
-	struct pt_regs regs;
-	__int128 vmx_regs[32+2];
-	__int128 vsx_regs[32];
-	unsigned int fpscr;
-};
-static struct register_state prev_state;
 
 static void get_gp_regs(unsigned long pid, struct register_state *state)
 {
@@ -239,6 +246,7 @@ static void print_insn(pid_t pid, uint32_t *pc)
 	}
 
 	if (qtrace_logfile) {
+		struct qtrace_record qtr;
 		int ret;
 		struct pt_regs regs;
 		unsigned long addr = 0, size = 0;
@@ -249,10 +257,23 @@ static void print_insn(pid_t pid, uint32_t *pc)
 			exit(1);
 		}
 
-		if (is_storage_insn(insn, &regs.gpr[0], &addr, &size))
-			qtrace_add_storage_record(insn, pc, addr, size);
-		else
-			qtrace_add_record(insn, pc);
+		memset(&qtr, 0, sizeof(qtr));
+		qtr.insn = insn;
+		qtr.insn_addr = (unsigned long)pc;
+
+		if (is_storage_insn(insn, &regs.gpr[0], &addr, &size)) {
+			qtr.data_addr = addr;
+			qtr.data_addr_valid = true;
+		}
+
+		qtr.branch = is_branch(insn);
+		qtr.conditional_branch = is_conditional_branch(insn);
+		qtr.conditional_branch = true;
+
+		if (qtwriter_write_record(&qtwr, &qtr) == false) {
+			fprintf(stderr, "qtwriter_write_record failed\n");
+			exit(1);
+		}
 	}
 }
 
@@ -335,7 +356,7 @@ int main(int argc, char *argv[])
 		ascii_fout = stdout;
 	} else {
 		if (qtrace_logfile)
-			qtrace_open(qtrace_logfile);
+			qtwriter_open(&qtwr, qtrace_logfile, 0);
 
 		if (ascii_logfile)
 			ascii_open(ascii_logfile);
@@ -417,7 +438,8 @@ int main(int argc, char *argv[])
 			remove_pid(pid);
 
 			if (pid == tracing_pid) {
-				qtrace_close();
+				if (qtrace_logfile)
+					qtwriter_close(&qtwr);
 				exit(0);
 			}
 
@@ -499,6 +521,8 @@ int main(int argc, char *argv[])
 
 			if (nr_insns_left == 0) {
 				detach_all_threads();
+				if (qtrace_logfile)
+					qtwriter_close(&qtwr);
 				exit(0);
 			}
 

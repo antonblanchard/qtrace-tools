@@ -35,7 +35,7 @@
 #include <sys/stat.h>
 
 #include <qtwriter.h>
-#include "../ptracer/branch.h"
+#include "../qtlib/branch.h"
 #include "../ptracer/ppc_storage.h"
 #include "../ptracer/ppc_storage.c"
 
