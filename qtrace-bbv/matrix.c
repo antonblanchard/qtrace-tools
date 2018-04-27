@@ -162,6 +162,17 @@ void matrix_random_ones(struct matrix *m)
 	}
 }
 
+void matrix_random(struct matrix *m)
+{
+	uint64_t row, col;
+
+	for (row = 0; row < m->rows; row++) {
+		for (col = 0; col < m->cols; col++) {
+			*matrix_entry(m, row, col) = random();
+		}
+	}
+}
+
 bool matrix_multiply(struct matrix *c, struct matrix *a, struct matrix *b)
 {
 	unsigned long row, col;
@@ -173,6 +184,10 @@ bool matrix_multiply(struct matrix *c, struct matrix *a, struct matrix *b)
 		return false;
 
 	if (b->cols != c->cols)
+		return false;
+
+	/* We don't support multiplication into one of the sources */
+	if ((a == c) || (b == c))
 		return false;
 
 	for (row = 0; row < a->rows; row++) {
@@ -197,6 +212,53 @@ bool matrix_multiply(struct matrix *c, struct matrix *a, struct matrix *b)
 #define ROWA 128
 #define COLA 32
 #define COLB 8
+
+static void identity_multiplication(void)
+{
+	uint64_t row, col;
+	struct matrix *a, *b, *c, *i;
+
+	a = matrix_create(ROWA, ROWA);
+	b = matrix_create(ROWA, ROWA);
+	c = matrix_create(ROWA, ROWA);
+	i = matrix_create(ROWA, ROWA);
+
+	/* Identity matrix */
+	for (row = 0; row < ROWA; row++)
+		*matrix_entry(i, row, row) = 1;
+
+	matrix_random(a);
+
+	/* An identity matrix is commutative */
+	assert(matrix_multiply(b, a, i) == true);
+	assert(matrix_multiply(c, i, a) == true);
+
+	assert(matrix_compare(b, c) == true);
+}
+
+static void associative_multiplication(void)
+{
+	uint64_t row, col;
+	struct matrix *a, *b, *c, *r1a, *r1, *r2a, *r2;
+
+	a = matrix_create(ROWA, ROWA);
+	b = matrix_create(ROWA, ROWA);
+	c = matrix_create(ROWA, ROWA);
+	r1a = matrix_create(ROWA, ROWA);
+	r2a = matrix_create(ROWA, ROWA);
+	r1 = matrix_create(ROWA, ROWA);
+	r2 = matrix_create(ROWA, ROWA);
+
+	matrix_random(a);
+	matrix_random(b);
+	matrix_random(c);
+
+	assert(matrix_multiply(r1a, a, b) == true);
+	assert(matrix_multiply(r1, r1a, c) == true);
+
+	assert(matrix_multiply(r2a, b, c) == true);
+	assert(matrix_multiply(r2, a, r2a) == true);
+}
 
 int main(void)
 {
@@ -241,6 +303,9 @@ int main(void)
 	matrix_destroy(aa);
 	matrix_destroy(b);
 	matrix_destroy(c);
+
+	identity_multiplication();
+	associative_multiplication();
 
 	return 0;
 }

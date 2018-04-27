@@ -19,5 +19,6 @@ void matrix_destroy(struct matrix *m);
 void matrix_print(struct matrix *m);
 void matrix_random_ones(struct matrix *m);
 bool matrix_multiply(struct matrix *c, struct matrix *a, struct matrix *b);
+void matrix_random(struct matrix *m);
 
 #endif
