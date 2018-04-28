@@ -55,7 +55,7 @@ bool init_pagemaps(pid_t pid, unsigned long basesz, unsigned long hugesz)
 	}
 
 	kpf_fd = open("/proc/kpageflags", O_RDONLY);
-	if (pm_fd == -1) {
+	if (kpf_fd == -1) {
 		perror("open kpageflags");
 		exit(1);
 	}
