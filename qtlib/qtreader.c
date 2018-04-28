@@ -24,6 +24,7 @@
 #include "qtrace.h"
 #include "qtreader.h"
 #include "endian-helpers.h"
+#include "branch.h"
 
 #define GET8(__state) \
 ({ \
@@ -282,11 +283,6 @@ bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, u
 #define BI(insn)		(((insn) >> 16) & 0x1f)
 #define BD(insn)		(((insn) >> 2) & 0x3fff)
 
-static bool branch_conditional_is_conditional(uint32_t insn)
-{
-	return !!((BO(insn) & 0x14) != 0x14);
-}
-
 static void annotate_branch(struct qtrace_record *record)
 {
 	uint32_t insn = record->insn;
@@ -496,6 +492,13 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 			record->branch_taken = true;
 		else
 			record->branch_taken = false;
+	} else if (is_conditional_branch(record->insn)) {
+		/*
+		 * Some qtraces are missing termination codes on not taken
+		 * conditional branches. Fix it here.
+		 */
+		record->branch = true;
+		record->conditional_branch = true;
 	}
 
 	if (flags & QTRACE_IAR_VSID_PRESENT)
