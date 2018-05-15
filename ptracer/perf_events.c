@@ -34,11 +34,13 @@ static long sys_perf_event_open(struct perf_event_attr *attr, pid_t pid,
 
 static void setup_sigio(unsigned long pid, int fd)
 {
+	struct f_owner_ex own;
+
 	/*
 	 * We want the thread to stop when the counter overflows, so we
 	 * send the signal in band and consume it via ptrace()
 	 */
-	if (fcntl(fd, F_SETFL, O_NONBLOCK|O_ASYNC) == -1) {
+	if (fcntl(fd, F_SETFL, O_ASYNC) == -1) {
 		perror("fnctl(F_SETFL)");
 		exit(1);
 	}
@@ -49,7 +51,10 @@ static void setup_sigio(unsigned long pid, int fd)
 		exit(1);
 	}
 
-	if (fcntl(fd, F_SETOWN, pid) == -1) {
+	own.type = F_OWNER_TID;
+	own.pid = pid;
+
+	if (fcntl(fd, F_SETOWN_EX, &own) == -1) {
 		perror("fnctl(F_SETOWN)");
 		exit(1);
 	}
@@ -67,10 +72,6 @@ static void setup_insn_counter(struct pid *pid, unsigned long insns)
 	attr.exclude_kernel = 1;
 	attr.exclude_hv = 1;
 	attr.exclude_idle = 1;
-
-	/* Enable on exec */
-	attr.disabled = 1;
-	attr.enable_on_exec = 1;
 
 	/* Count instructions */
 	attr.type = PERF_TYPE_HARDWARE;
@@ -90,9 +91,8 @@ static void setup_insn_counter(struct pid *pid, unsigned long insns)
 		exit(1);
 	}
 
-	/* Counters will pause on first overflow */
-	if (ioctl(pid->perf_fd, PERF_EVENT_IOC_REFRESH, 1) == -1) {
-		perror("ioctl(PERF_EVENT_IOC_REFRESH)");
+	if (ioctl(pid->perf_fd, PERF_EVENT_IOC_ENABLE, 0) == -1) {
+		perror("ioctl(PERF_EVENT_IOC_ENABLE)");
 		exit(1);
 	}
 }
