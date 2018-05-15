@@ -112,8 +112,16 @@ static bool extended_31(uint32_t insn, unsigned long *gprs,
 	case 301:	/* lxvll */
 	case 397:	/* stxvl */
 	case 429:	/* stxvll */
-		/* XXX FIXME length in RB */
-		assert(0);
+		/* Length is in the top byte of RB */
+                *size = (gprs[PPC_RB(insn)] >> 56);
+		if (*size > 16)
+			*size = 16;
+
+		*addr = 0;
+		if (PPC_RA(insn) != 0)
+			*addr = gprs[PPC_RA(insn)];
+
+		return true;
 
 	case 781:	/* lxsibzx */
 	case 909:	/* stxsibx */
