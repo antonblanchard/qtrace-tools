@@ -22,6 +22,20 @@ struct qtreader_state {
 	unsigned int verbose;
 	int fd;
 	uint64_t flags;
+
+	bool insn_rpn_valid;
+	uint32_t insn_rpn;
+	bool insn_page_size_valid;
+	uint32_t insn_page_size;
+	bool data_rpn_valid;
+	uint32_t data_rpn;
+	bool data_page_size_valid;
+	uint32_t data_page_size;
+
+	bool lpid_present;
+	uint32_t lpid;
+	bool pid_present;
+	uint32_t pid;
 };
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);

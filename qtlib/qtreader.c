@@ -218,17 +218,15 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) {
+		state->insn_rpn_valid = true;
 		state->next_insn_rpn_valid = true;
 		state->next_insn_rpn = GET32(state);
-	} else {
-		state->next_insn_rpn_valid = false;
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT) {
+		state->insn_page_size_valid = true;
 		state->next_insn_page_size_valid = true;
 		state->next_insn_page_size = GET8(state);
-	} else {
-		state->next_insn_page_size_valid = false;
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
@@ -237,11 +235,15 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 	if (flags3 & QTRACE_PTCR_PRESENT)
 		GET64(state);
 
-	if (flags3 & QTRACE_LPID_PRESENT)
-		GET64(state);
+	if (flags3 & QTRACE_LPID_PRESENT) {
+		state->lpid_present = true;
+		state->lpid = GET64(state);
+	}
 
-	if (flags3 & QTRACE_PID_PRESENT)
-		GET32(state);
+	if (flags3 & QTRACE_PID_PRESENT) {
+		state->pid_present = true;
+		state->pid = GET32(state);
+	}
 
 	if (hdr_flags & QTRACE_HDR_COMMENT_PRESENT) {
 		uint16_t len = GET16(state);
@@ -266,9 +268,13 @@ bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, u
 	state->size = size;
 	state->verbose = verbose;
 	state->fd = -1;
+	state->next_insn_addr = -1UL;
 
 	if (qtreader_parse_header(state) == false)
 		return false;
+
+	if (state->next_insn_addr == -1UL)
+		fprintf(stderr, "Warning: header has no instruction address\n");
 
 	return true;
 }
@@ -385,13 +391,27 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	record->insn_addr = state->next_insn_addr;
 
 	if (state->next_insn_rpn_valid) {
+		if (!state->insn_rpn_valid) {
+			fprintf(stderr, "Warning: insn rpn becomes valid\n");
+			state->insn_rpn_valid = true;
+		}
+		state->insn_rpn = state->next_insn_rpn;
+	}
+	if (state->insn_rpn_valid) {
 		record->insn_rpn_valid = true;
-		record->insn_rpn = state->next_insn_rpn;
+		record->insn_rpn = state->insn_rpn;
 	}
 
 	if (state->next_insn_page_size_valid) {
+		if (!state->insn_page_size_valid) {
+			fprintf(stderr, "Warning: insn page size becomes valid\n");
+			state->insn_page_size_valid = true;
+		}
+		state->insn_page_size = state->next_insn_page_size;
+	}
+	if (state->insn_page_size_valid) {
 		record->insn_page_size_valid = true;
-		record->insn_page_size = state->next_insn_page_size;
+		record->insn_page_size = state->insn_page_size;
 	}
 
 	record->insn = GET32(state);
@@ -473,8 +493,13 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	}
 
 	if (flags & QTRACE_DATA_RPN_PRESENT) {
+		if (!state->data_rpn_valid)
+			state->data_rpn_valid = true;
+		state->data_rpn = GET32(state);
+	}
+	if (state->data_rpn_valid) {
 		record->data_rpn_valid = true;
-		record->data_rpn = GET32(state);
+		record->data_rpn = state->data_rpn;
 	} else {
 		record->data_rpn_valid = false;
 	}
@@ -518,6 +543,7 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->next_insn_rpn_valid = false;
 	}
 
+
 	/* FIXME */
 	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
 		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
@@ -556,17 +582,23 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->ptr += sz;
 	}
 
-	/* FIXME */
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
-		GET32(state);
+	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT) {
+		uint32_t insn_rpn = GET32(state);
+		if (!state->next_insn_rpn_valid) {
+			state->next_insn_rpn_valid = true;
+			state->next_insn_rpn = insn_rpn;
+		}
+	}
 
 	/* FIXME */
 	if (flags2 & QTRACE_TRACE_ERROR_CODE_PRESENT)
 		GET8(state);
 
-	/* FIXME */
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)
-		GET8(state);
+	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT) {
+		uint8_t insn_page_size = GET8(state);
+		state->next_insn_page_size_valid = true;
+		state->next_insn_page_size = insn_page_size;
+	}
 
 	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
 		state->next_insn_page_size_valid = true;
