@@ -25,7 +25,7 @@ qtlib_tests_test4_SOURCES = qtlib/tests/test4.c
 qtlib_tests_test4_LDADD = libqtrace.a
 
 bin_PROGRAMS = branch/link_stack qtdis/qtdis qtrace-bbv/qtrace-bbv \
-	       qtbuild/qtbuild $(PTRACER)
+	       qtbuild/qtbuild htm/htmdecoder $(PTRACER)
 EXTRA_PROGRAMS = ptracer/ptracer
 
 branch_link_stack_SOURCES = branch/link_stack.c
@@ -51,3 +51,7 @@ ptracer_ptracer_SOURCES = \
 	ptracer/ppc_storage.c ptracer/ptrace.c \
 	ptracer/single_step.c ptracer/pagemap.c
 ptracer_ptracer_LDADD = libqtrace.a
+
+htm_htmdecoder_SOURCES = \
+	htm/htm.c htm/htmdecoder.c
+htm_htmdecoder_LDADD = libqtrace.a
