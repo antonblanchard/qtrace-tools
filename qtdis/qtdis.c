@@ -38,7 +38,10 @@
 #define be64_to_cpup(A)	(*(uint64_t *)A)
 #endif
 
+#ifdef HAVE_BFD_H
 static int qtbuild;
+#endif
+
 static unsigned int verbose;
 static uint32_t version;
 static int dump_nr;
@@ -342,10 +345,12 @@ static void __print_address(bfd_vma vma)
 {
 	asymbol *sym = symfind(vma);
 
+#ifdef HAVE_BFD_H
 	if (qtbuild) {
 		fprintf(stdout, "_dummy_%016lx ", vma);
 		return;
 	}
+#endif
 
 	if (sym) {
 		unsigned long offset = vma - bfd_asymbol_value(sym);
