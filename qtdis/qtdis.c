@@ -431,7 +431,9 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	uint16_t flags, flags2 = 0, flags3 = 0;
 	uint64_t iar = 0;
 	uint64_t iar_rpn;
+	uint64_t iar_seq_rpn;
 	uint8_t iar_page_size;
+	uint8_t iar_seq_page_size;
 	uint64_t data_address = 0;
 	uint32_t data_rpn;
 	uint8_t data_page_size;
@@ -571,6 +573,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	}
 
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT) {
+		iar_seq_rpn = be32_to_cpup(p);
 		p += sizeof(uint32_t);
 	}
 
@@ -579,6 +582,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	}
 
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT) {
+		iar_seq_page_size = *(uint8_t *)p;
 		p += 1;
 	}
 
@@ -663,13 +667,15 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 #endif
 
 	if (verbose) {
-		if (flags & (QTRACE_DATA_ADDRESS_PRESENT |
+		if ((flags & (QTRACE_DATA_ADDRESS_PRESENT |
 				QTRACE_DATA_RPN_PRESENT |
-				QTRACE_DATA_PAGE_SIZE_PRESENT |
 				QTRACE_IAR_RPN_PRESENT |
-				QTRACE_IAR_PAGE_SIZE_PRESENT |
 				QTRACE_NODE_PRESENT |
-				QTRACE_TERMINATION_PRESENT))
+				QTRACE_TERMINATION_PRESENT)) ||
+		    (flags2 & (QTRACE_DATA_PAGE_SIZE_PRESENT |
+				QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT |
+				QTRACE_IAR_PAGE_SIZE_PRESENT |
+				QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)))
 			fprintf(stdout, "\t #");
 
 		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
@@ -689,6 +695,9 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		if (flags & QTRACE_IAR_RPN_PRESENT)
 			fprintf(stdout, " INSN RPN 0x%08lx", iar_rpn);
 
+		if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
+			fprintf(stdout, " INSN SEQ RPN 0x%08lx", iar_seq_rpn);
+
 		if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
 			fprintf(stdout, " INSN RADIX ");
 			print_radix(radix_nr_insn_ptes, radix_insn_ptes);
@@ -696,6 +705,9 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 
 		if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
 			fprintf(stdout, " INSN PAGE SIZE %d", iar_page_size);
+
+		if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)
+			fprintf(stdout, " INSN SEQ PAGE SIZE %d", iar_seq_page_size);
 
 		if (flags & QTRACE_NODE_PRESENT)
 			fprintf(stdout, " NODE 0x%02x", node);
