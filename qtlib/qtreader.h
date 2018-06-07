@@ -1,6 +1,10 @@
 #ifndef __QTLIB_H__
 #define __QTLIB_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -74,5 +78,9 @@ static inline void qtreader_clear_tlbie_info(struct qtreader_state *state)
 
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record);
 void qtreader_destroy(struct qtreader_state *state);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

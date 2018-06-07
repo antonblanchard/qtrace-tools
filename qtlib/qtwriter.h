@@ -1,6 +1,10 @@
 #ifndef __QTWRITER_H__
 #define __QTWRITER_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -22,5 +26,9 @@ bool qtwriter_open(struct qtwriter_state *state, char *filename,
 bool qtwriter_write_record(struct qtwriter_state *state,
 			   struct qtrace_record *record);
 void qtwriter_close(struct qtwriter_state *state);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
