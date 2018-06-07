@@ -26,8 +26,8 @@ int main(int argc, char *argv[])
 
 	while (qtreader_next_record(&state, &record) == true)
                 printf("%x %lx %lx %d %lx %lx %d %d %d %d\n", record.insn, record.insn_addr,
-                        record.insn_rpn, record.insn_page_size, record.data_addr,
-                        record.data_rpn, record.data_page_size, record.branch,
+                        record.insn_ra, record.insn_page_shift, record.data_addr,
+                        record.data_ra, record.data_page_shift, record.branch,
                         record.conditional_branch, record.branch_taken);
 
 
