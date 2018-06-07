@@ -571,7 +571,7 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		if (state->insn_page_shift_valid)
 			pshift = state->insn_page_shift;
 
-		ra = (state->insn_rpn << pshift);
+		ra = ((uint64_t)state->insn_rpn << pshift);
 		ra |= record->insn_addr & ((1UL << pshift) - 1);
 
 		record->insn_ra_valid = true;
@@ -657,9 +657,10 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	}
 
 	if (flags & QTRACE_DATA_RPN_PRESENT) {
-		if (!state->data_rpn_valid)
-			state->data_rpn_valid = true;
+		state->data_rpn_valid = true;
 		state->data_rpn = GET32(state);
+	} else {
+		state->data_rpn_valid = false;
 	}
 
 	if (flags & QTRACE_IAR_PRESENT) {
@@ -748,7 +749,7 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		if (record->data_addr_valid)
 			ea = record->data_addr;
 
-		ra = (state->data_rpn << pshift);
+		ra = ((uint64_t)state->data_rpn << pshift);
 		ra |= ea & ((1UL << pshift) - 1);
 
 		record->data_ra_valid = true;
