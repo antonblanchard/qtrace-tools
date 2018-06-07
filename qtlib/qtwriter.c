@@ -132,7 +132,7 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	hdr_flags = QTRACE_HDR_IAR_PRESENT;
 
-	if (record->insn_rpn_valid)
+	if (record->insn_ra_valid)
 		hdr_flags |= QTRACE_HDR_IAR_RPN_PRESENT;
 
 	if (record->insn_page_size_valid)
@@ -154,8 +154,14 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	put64(state, record->insn_addr);
 
-	if (record->insn_rpn_valid)
-		put32(state, record->insn_rpn);
+	if (record->insn_ra_valid) {
+		uint8_t pshift = 16;
+
+		if (record->insn_page_size_valid)
+			pshift = record->insn_page_size;
+
+		put32(state, record->insn_ra >> pshift);
+	}
 
 	if (record->insn_page_size_valid)
 		put8(state, record->insn_page_size);
@@ -212,13 +218,13 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_addr_valid)
 		flags |= QTRACE_DATA_ADDRESS_PRESENT;
 
-	if (state->prev_record.data_rpn_valid)
+	if (state->prev_record.data_ra_valid)
 		flags |= QTRACE_DATA_RPN_PRESENT;
 
 	if (state->prev_record.data_page_size_valid)
 		flags2 |= QTRACE_DATA_PAGE_SIZE_PRESENT;
 
-	if (record->insn_rpn_valid)
+	if (record->insn_ra_valid)
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
 	if (record->insn_page_size_valid)
@@ -269,14 +275,26 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_addr_valid)
 		put64(state, state->prev_record.data_addr);
 
-	if (state->prev_record.data_rpn_valid)
-		put32(state, state->prev_record.data_rpn);
+	if (state->prev_record.data_ra_valid) {
+		uint8_t pshift = 16;
+
+		if (state->prev_record.data_page_size_valid)
+			pshift = state->prev_record.data_page_size;
+
+		put32(state, state->prev_record.data_ra >> pshift);
+	}
 
 	if (iar_change)
 		put64(state, record->insn_addr);
 
-	if (record->insn_rpn_valid)
-		put32(state, record->insn_rpn);
+	if (record->insn_ra_valid) {
+		uint8_t pshift = 16;
+
+		if (record->insn_page_size_valid)
+			pshift = record->insn_page_size;
+
+		put32(state, record->insn_ra >> pshift);
+	}
 
 	if (record->insn_page_size_valid)
 		put8(state, record->insn_page_size);

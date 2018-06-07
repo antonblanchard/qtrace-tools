@@ -17,14 +17,14 @@ enum branch_type {
 struct qtrace_record {
 	uint32_t insn;
 	uint64_t insn_addr;
-	bool insn_rpn_valid;
-	uint64_t insn_rpn;
+	bool insn_ra_valid;
+	uint64_t insn_ra;
 	bool insn_page_size_valid;
 	uint32_t insn_page_size;
 	bool data_addr_valid;
 	uint64_t data_addr;
-	bool data_rpn_valid;
-	uint64_t data_rpn;
+	bool data_ra_valid;
+	uint64_t data_ra;
 	bool data_page_size_valid;
 	uint32_t data_page_size;
 

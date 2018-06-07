@@ -550,10 +550,6 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		}
 		state->insn_rpn = state->next_insn_rpn;
 	}
-	if (state->insn_rpn_valid) {
-		record->insn_rpn_valid = true;
-		record->insn_rpn = state->insn_rpn;
-	}
 
 	if (state->next_insn_page_size_valid) {
 		if (!state->insn_page_size_valid) {
@@ -562,9 +558,24 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		}
 		state->insn_page_size = state->next_insn_page_size;
 	}
+
 	if (state->insn_page_size_valid) {
 		record->insn_page_size_valid = true;
 		record->insn_page_size = state->insn_page_size;
+	}
+
+	if (state->insn_rpn_valid) {
+		uint8_t pshift = 16;
+		uint64_t ra;
+
+		if (state->insn_page_size_valid)
+			pshift = state->insn_page_size;
+
+		ra = (state->insn_rpn << pshift);
+		ra |= record->insn_addr & ((1UL << pshift) - 1);
+
+		record->insn_ra_valid = true;
+		record->insn_ra = ra;
 	}
 
 	record->insn = GET32(state);
@@ -650,12 +661,6 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 			state->data_rpn_valid = true;
 		state->data_rpn = GET32(state);
 	}
-	if (state->data_rpn_valid) {
-		record->data_rpn_valid = true;
-		record->data_rpn = state->data_rpn;
-	} else {
-		record->data_rpn_valid = false;
-	}
 
 	if (flags & QTRACE_IAR_PRESENT) {
 		state->next_insn_addr = GET64(state);
@@ -730,8 +735,24 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
 		record->data_page_size_valid = true;
 		record->data_page_size = GET8(state);
-	} else {
-		record->data_page_size_valid = false;
+	}
+
+	if (state->data_rpn_valid) {
+		uint8_t pshift = 16;
+		uint64_t ea = 0;
+		uint64_t ra;
+
+		if (record->data_page_size_valid)
+			pshift = record->data_page_size;
+
+		if (record->data_addr_valid)
+			ea = record->data_addr;
+
+		ra = (state->data_rpn << pshift);
+		ra |= ea & ((1UL << pshift) - 1);
+
+		record->data_ra_valid = true;
+		record->data_ra = ra;
 	}
 
 	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT)

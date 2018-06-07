@@ -266,8 +266,8 @@ static void print_insn(pid_t pid, uint32_t *pc)
 
 		qtr.insn_addr = (unsigned long)pc;
 		if (do_xlate && ea_to_pa(qtr.insn_addr, &pa, &pshift, true)) {
-			qtr.insn_rpn = pa >> 12;
-			qtr.insn_rpn_valid = true;
+			qtr.insn_ra = pa;
+			qtr.insn_ra_valid = true;
 			qtr.insn_page_size = pshift;
 			qtr.insn_page_size_valid = true;
 		}
@@ -276,8 +276,8 @@ static void print_insn(pid_t pid, uint32_t *pc)
 			qtr.data_addr = addr;
 			qtr.data_addr_valid = true;
 			if (do_xlate && ea_to_pa(addr, &pa, &pshift, false)) {
-				qtr.data_rpn = pa >> 12;
-				qtr.data_rpn_valid = true;
+				qtr.data_ra = pa;
+				qtr.data_ra_valid = true;
 				qtr.data_page_size = pshift;
 				qtr.data_page_size_valid = true;
 			}
