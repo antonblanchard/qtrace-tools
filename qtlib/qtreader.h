@@ -7,6 +7,7 @@
 #include "qtrace_record.h"
 
 #define QTREADER_FLAGS_BRANCH	(1 << 0)
+#define QTREADER_FLAGS_TLBIE	(1 << 1)
 
 struct qtreader_state {
 	uint32_t version;
@@ -59,6 +60,16 @@ static inline void qtreader_set_branch_info(struct qtreader_state *state)
 static inline void qtreader_clear_branch_info(struct qtreader_state *state)
 {
 	state->flags &= ~QTREADER_FLAGS_BRANCH;
+}
+
+static inline void qtreader_set_tlbie_info(struct qtreader_state *state)
+{
+	state->flags |= QTREADER_FLAGS_TLBIE;
+}
+
+static inline void qtreader_clear_tlbie_info(struct qtreader_state *state)
+{
+	state->flags &= ~QTREADER_FLAGS_TLBIE;
 }
 
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record);

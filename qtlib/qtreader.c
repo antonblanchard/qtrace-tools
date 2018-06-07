@@ -373,8 +373,161 @@ static void annotate_branch(struct qtrace_record *record)
 	record->branch_type = ASYNC_EXCEPTION;
 }
 
+#define QTRACE_MAX_GPRS_OUT  32
+#define QTRACE_MAX_FPRS_OUT   3
+#define QTRACE_MAX_SPRS_OUT   4
+#define QTRACE_MAX_VMXRS_OUT  3
+#define QTRACE_MAX_VSXRS_OUT  3 
+
+struct qtrace_register_info {
+	uint16_t index;
+	uint64_t value;
+};
+
+#define RIC(insn)		(((insn) >> 18) & 0x3)
+#define PRS(insn)		(((insn) >> 17) & 0x1)
+#define R(insn)			(((insn) >> 16) & 0x1)
+#define IS(rb)			(((rb) >> 10) & 0x3)
+#define AP(rb)			(((rb) >> 5) & 0x7)
+#define EPN(rb)			(((rb) >> 12) & 0x7ffffffffffffULL)
+#define SET(rb)			(((rb) >> 12) & 0xfffU)
+
+struct qtrace_reg_state {
+	uint8_t nr_gprs_in;
+	uint8_t nr_fprs_in;
+	uint8_t nr_vmxs_in;
+	uint8_t nr_vsxs_in;
+	uint8_t nr_sprs_in;
+	uint8_t nr_gprs_out;
+	uint8_t nr_fprs_out;
+	uint8_t nr_vmxs_out;
+	uint8_t nr_vsxs_out;
+	uint8_t nr_sprs_out;
+	struct qtrace_register_info gprs_out[QTRACE_MAX_GPRS_OUT];
+};
+
+static bool annotate_tlbie(struct qtreader_state *state, struct qtrace_record *record, struct qtrace_reg_state *regs)
+{
+	uint32_t insn = record->insn;
+	uint32_t opcode = OPCODE(insn);
+	uint32_t sub_opcode = SUB_OPCODE(insn);
+	uint64_t rb, rs;
+	uint8_t ap;
+	uint64_t epn;
+
+	if (opcode != 31)
+		return true;
+	if (sub_opcode != 274 && sub_opcode != 306)
+		return true;
+
+	record->tlbie = true;
+	record->tlbie_local = (sub_opcode == 274);
+
+	if (regs->nr_gprs_out != 2)
+		return false; /* no gprs */
+
+	rb = regs->gprs_out[0].value;
+	rs = regs->gprs_out[1].value;
+	record->tlbie_ric = RIC(insn);
+	record->tlbie_prs = PRS(insn);
+	record->tlbie_r = R(insn);
+	record->tlbie_is = IS(rb);
+
+	if (record->tlbie_r != 1) {
+		fprintf(stderr, "Error: hash tlbie not supported\n");
+		return false; /* hash not supported */
+	}
+
+	if (record->tlbie_is == 0) {
+		ap = AP(rb);
+		epn = EPN(rb);
+		switch (ap) {
+		case 0x0:
+			record->tlbie_page_size = 12;
+			break;
+		case 0x5:
+			record->tlbie_page_size = 16;
+			break;
+		case 0x1:
+			record->tlbie_page_size = 21;
+			break;
+		case 0x2:
+			record->tlbie_page_size = 30;
+			break;
+		default:
+			fprintf(stderr, "Error: bad tlbie AP\n");
+			return false;
+		}
+		record->tlbie_addr = epn << 12;
+	}
+
+	record->tlbie_pid = rs >> 32;
+	if (record->tlbie_local) {
+		record->tlbie_lpid = state->lpid;
+		if (record->tlbie_is != 0)
+			record->tlbie_set = SET(rb);
+	} else {
+		record->tlbie_lpid = rs & 0xffffffffUL;
+	}
+
+	return true;
+}
+
+static bool do_parse_regs(struct qtreader_state *state, struct qtrace_reg_state *regs)
+{
+	int i;
+
+	memset(regs, 0, sizeof(*regs));
+
+	regs->nr_gprs_in = GET8(state);
+	regs->nr_fprs_in = GET8(state);
+	regs->nr_vmxs_in = GET8(state);
+	if (state->version >= 0x7000000)
+		regs->nr_vsxs_in = GET8(state);
+	else
+		regs->nr_vsxs_in = 0;
+	regs->nr_sprs_in = GET8(state);
+
+	regs->nr_gprs_out = GET8(state);
+	regs->nr_fprs_out = GET8(state);
+	regs->nr_vmxs_out = GET8(state);
+	if (state->version >= 0x7000000)
+		regs->nr_vsxs_out = GET8(state);
+	else
+		regs->nr_vsxs_out = 0;
+	regs->nr_sprs_out = GET8(state);
+
+	state->ptr += regs->nr_gprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
+	state->ptr += regs->nr_fprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
+	state->ptr += regs->nr_vmxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+	state->ptr += regs->nr_vsxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+	state->ptr += regs->nr_sprs_in * (sizeof(uint16_t) + sizeof(uint64_t));
+
+	if (!(state->flags & QTREADER_FLAGS_TLBIE)) {
+		state->ptr += regs->nr_gprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
+	} else {
+		for (i = 0; i < regs->nr_gprs_out; i++) {
+			regs->gprs_out[i].index = GET8(state);
+			regs->gprs_out[i].value = GET64(state);
+		}
+	}
+	state->ptr += regs->nr_fprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
+	state->ptr += regs->nr_vmxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+	state->ptr += regs->nr_vsxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
+	state->ptr += regs->nr_sprs_out * (sizeof(uint16_t) + sizeof(uint64_t));
+
+	if (state->ptr > (state->mem + state->size))
+		goto err;
+
+	return true;
+
+err:
+	return false;
+}
+
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record)
 {
+	struct qtrace_reg_state regs;
 	uint16_t flags, flags2 = 0, flags3 = 0;
 
 	memset(record, 0, sizeof(*record));
@@ -544,42 +697,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	}
 
 
-	/* FIXME */
 	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
-		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
-		uint8_t gprs_out, fprs_out, vmxs_out, vsxs_out = 0, sprs_out;
-		uint32_t sz;
-
-		gprs_in = GET8(state);
-		fprs_in = GET8(state);
-		vmxs_in = GET8(state);
-		if (state->version >= 0x7000000)
-			vsxs_in = GET8(state);
-		sprs_in = GET8(state);
-
-		gprs_out = GET8(state);
-		fprs_out = GET8(state);
-		vmxs_out = GET8(state);
-		if (state->version >= 0x7000000)
-			vsxs_out = GET8(state);
-		sprs_out = GET8(state);
-
-		sz = gprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		sz += fprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		sz += vmxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		sz += vsxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		sz += sprs_in * (sizeof(uint16_t) + sizeof(uint64_t));
-
-		sz += gprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		sz += fprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		sz += vmxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		sz += vsxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		sz += sprs_out * (sizeof(uint16_t) + sizeof(uint64_t));
-
-		if (state->ptr + sz > (state->mem + state->size))
+		if (!do_parse_regs(state, &regs))
 			goto err;
-
-		state->ptr += sz;
 	}
 
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT) {
@@ -619,6 +739,11 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 
 	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT)
 		SKIP(state, 1);
+
+	if (state->flags & QTREADER_FLAGS_TLBIE) {
+		if (!annotate_tlbie(state, record, &regs))
+			goto err;
+	}
 
 	return true;
 

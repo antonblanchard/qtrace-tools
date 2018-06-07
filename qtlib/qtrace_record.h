@@ -39,6 +39,18 @@ struct qtrace_record {
 	bool branch_direct;
 	enum branch_type branch_type;
 
+	bool tlbie;
+	bool tlbie_local;
+	uint8_t tlbie_ric;
+	bool tlbie_prs;
+	bool tlbie_r;
+	uint8_t tlbie_is;
+	uint16_t tlbie_set;
+	uint32_t tlbie_page_size;
+	uint64_t tlbie_addr;
+	uint32_t tlbie_lpid;
+	uint32_t tlbie_pid;
+
 	/* We might want to add BH target unpredictable and static branch hints */
 
 	uint64_t next_insn_addr;
