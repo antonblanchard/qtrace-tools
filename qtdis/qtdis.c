@@ -342,6 +342,11 @@ static void __print_address(bfd_vma vma)
 {
 	asymbol *sym = symfind(vma);
 
+	if (qtbuild) {
+		fprintf(stdout, "_dummy_%016lx ", vma);
+		return;
+	}
+
 	if (sym) {
 		unsigned long offset = vma - bfd_asymbol_value(sym);
 		const char *name = bfd_asymbol_name(sym);
