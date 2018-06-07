@@ -215,6 +215,14 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	flags = QTRACE_EXTENDED_FLAGS_PRESENT;
 	flags2 = 0;
 
+	/* Some sort of branch */
+	if (state->prev_record.branch == true ||
+	    record->insn_addr != (state->prev_record.insn_addr + 4))
+		is_branch = true;
+
+	if ((record->insn_addr != (state->prev_record.insn_addr + 4)))
+		iar_change = true;
+
 	if (state->prev_record.data_addr_valid)
 		flags |= QTRACE_DATA_ADDRESS_PRESENT;
 
@@ -224,22 +232,14 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_page_shift_valid)
 		flags2 |= QTRACE_DATA_PAGE_SIZE_PRESENT;
 
-	if (record->insn_ra_valid)
+	if (record->insn_ra_valid && iar_change)
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
-	if (record->insn_page_shift_valid)
+	if (record->insn_page_shift_valid && iar_change)
 		flags2 |= QTRACE_IAR_PAGE_SIZE_PRESENT;
 
-	/* Some sort of branch */
-	if (state->prev_record.branch == true ||
-	    record->insn_addr != (state->prev_record.insn_addr + 4)) {
-
-		is_branch = true;
-
+	if (is_branch) {
 		flags |= QTRACE_NODE_PRESENT | QTRACE_TERMINATION_PRESENT;
-
-		if ((record->insn_addr != (state->prev_record.insn_addr + 4)))
-			iar_change = true;
 
 		if (iar_change)
 			flags |= (QTRACE_IAR_CHANGE_PRESENT | QTRACE_IAR_PRESENT);
@@ -287,7 +287,7 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (iar_change)
 		put64(state, record->insn_addr);
 
-	if (record->insn_ra_valid) {
+	if (record->insn_ra_valid && iar_change) {
 		uint8_t pshift = 16;
 
 		if (record->insn_page_shift_valid)
@@ -296,7 +296,9 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		put32(state, record->insn_ra >> pshift);
 	}
 
-	if (record->insn_page_shift_valid)
+	/* XXX Add sequential insn rpn and sequential page size */
+
+	if (record->insn_page_shift_valid && iar_change)
 		put8(state, record->insn_page_shift);
 
 	if (state->prev_record.data_page_shift_valid)
