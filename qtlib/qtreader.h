@@ -19,8 +19,8 @@ struct qtreader_state {
 	uint64_t next_insn_addr;
 	uint32_t next_insn_rpn;
 	bool next_insn_rpn_valid;
-	uint32_t next_insn_page_size;
-	bool next_insn_page_size_valid;
+	uint32_t next_insn_page_shift;
+	bool next_insn_page_shift_valid;
 	void *mem;
 	void *ptr;
 	size_t size;
@@ -30,12 +30,12 @@ struct qtreader_state {
 
 	bool insn_rpn_valid;
 	uint32_t insn_rpn;
-	bool insn_page_size_valid;
-	uint32_t insn_page_size;
+	bool insn_page_shift_valid;
+	uint32_t insn_page_shift;
 	bool data_rpn_valid;
 	uint32_t data_rpn;
-	bool data_page_size_valid;
-	uint32_t data_page_size;
+	bool data_page_shift_valid;
+	uint32_t data_page_shift;
 
 	bool lpid_present;
 	uint32_t lpid;

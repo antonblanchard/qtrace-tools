@@ -19,14 +19,14 @@ struct qtrace_record {
 	uint64_t insn_addr;
 	bool insn_ra_valid;
 	uint64_t insn_ra;
-	bool insn_page_size_valid;
-	uint32_t insn_page_size;
+	bool insn_page_shift_valid;
+	uint32_t insn_page_shift;
 	bool data_addr_valid;
 	uint64_t data_addr;
 	bool data_ra_valid;
 	uint64_t data_ra;
-	bool data_page_size_valid;
-	uint32_t data_page_size;
+	bool data_page_shift_valid;
+	uint32_t data_page_shift;
 
 	bool branch;
 	bool conditional_branch;
@@ -46,7 +46,7 @@ struct qtrace_record {
 	bool tlbie_r;
 	uint8_t tlbie_is;
 	uint16_t tlbie_set;
-	uint32_t tlbie_page_size;
+	uint32_t tlbie_page_shift;
 	uint64_t tlbie_addr;
 	uint32_t tlbie_lpid;
 	uint32_t tlbie_pid;

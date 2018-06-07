@@ -268,8 +268,8 @@ static void print_insn(pid_t pid, uint32_t *pc)
 		if (do_xlate && ea_to_pa(qtr.insn_addr, &pa, &pshift, true)) {
 			qtr.insn_ra = pa;
 			qtr.insn_ra_valid = true;
-			qtr.insn_page_size = pshift;
-			qtr.insn_page_size_valid = true;
+			qtr.insn_page_shift = pshift;
+			qtr.insn_page_shift_valid = true;
 		}
 
 		if (is_storage_insn(insn, &regs.gpr[0], &addr, &size)) {
@@ -278,8 +278,8 @@ static void print_insn(pid_t pid, uint32_t *pc)
 			if (do_xlate && ea_to_pa(addr, &pa, &pshift, false)) {
 				qtr.data_ra = pa;
 				qtr.data_ra_valid = true;
-				qtr.data_page_size = pshift;
-				qtr.data_page_size_valid = true;
+				qtr.data_page_shift = pshift;
+				qtr.data_page_shift_valid = true;
 			}
 		}
 

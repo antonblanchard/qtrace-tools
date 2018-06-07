@@ -224,9 +224,9 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT) {
-		state->insn_page_size_valid = true;
-		state->next_insn_page_size_valid = true;
-		state->next_insn_page_size = GET8(state);
+		state->insn_page_shift_valid = true;
+		state->next_insn_page_shift_valid = true;
+		state->next_insn_page_shift = GET8(state);
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
@@ -443,16 +443,16 @@ static bool annotate_tlbie(struct qtreader_state *state, struct qtrace_record *r
 		epn = EPN(rb);
 		switch (ap) {
 		case 0x0:
-			record->tlbie_page_size = 12;
+			record->tlbie_page_shift = 12;
 			break;
 		case 0x5:
-			record->tlbie_page_size = 16;
+			record->tlbie_page_shift = 16;
 			break;
 		case 0x1:
-			record->tlbie_page_size = 21;
+			record->tlbie_page_shift = 21;
 			break;
 		case 0x2:
-			record->tlbie_page_size = 30;
+			record->tlbie_page_shift = 30;
 			break;
 		default:
 			fprintf(stderr, "Error: bad tlbie AP\n");
@@ -551,25 +551,25 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->insn_rpn = state->next_insn_rpn;
 	}
 
-	if (state->next_insn_page_size_valid) {
-		if (!state->insn_page_size_valid) {
+	if (state->next_insn_page_shift_valid) {
+		if (!state->insn_page_shift_valid) {
 			fprintf(stderr, "Warning: insn page size becomes valid\n");
-			state->insn_page_size_valid = true;
+			state->insn_page_shift_valid = true;
 		}
-		state->insn_page_size = state->next_insn_page_size;
+		state->insn_page_shift = state->next_insn_page_shift;
 	}
 
-	if (state->insn_page_size_valid) {
-		record->insn_page_size_valid = true;
-		record->insn_page_size = state->insn_page_size;
+	if (state->insn_page_shift_valid) {
+		record->insn_page_shift_valid = true;
+		record->insn_page_shift = state->insn_page_shift;
 	}
 
 	if (state->insn_rpn_valid) {
 		uint8_t pshift = 16;
 		uint64_t ra;
 
-		if (state->insn_page_size_valid)
-			pshift = state->insn_page_size;
+		if (state->insn_page_shift_valid)
+			pshift = state->insn_page_shift;
 
 		ra = (state->insn_rpn << pshift);
 		ra |= record->insn_addr & ((1UL << pshift) - 1);
@@ -720,21 +720,21 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		GET8(state);
 
 	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT) {
-		uint8_t insn_page_size = GET8(state);
-		state->next_insn_page_size_valid = true;
-		state->next_insn_page_size = insn_page_size;
+		uint8_t insn_page_shift = GET8(state);
+		state->next_insn_page_shift_valid = true;
+		state->next_insn_page_shift = insn_page_shift;
 	}
 
 	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
-		state->next_insn_page_size_valid = true;
-		state->next_insn_page_size = GET8(state);
+		state->next_insn_page_shift_valid = true;
+		state->next_insn_page_shift = GET8(state);
 	} else {
-		state->next_insn_page_size_valid = false;
+		state->next_insn_page_shift_valid = false;
 	}
 
 	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
-		record->data_page_size_valid = true;
-		record->data_page_size = GET8(state);
+		record->data_page_shift_valid = true;
+		record->data_page_shift = GET8(state);
 	}
 
 	if (state->data_rpn_valid) {
@@ -742,8 +742,8 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		uint64_t ea = 0;
 		uint64_t ra;
 
-		if (record->data_page_size_valid)
-			pshift = record->data_page_size;
+		if (record->data_page_shift_valid)
+			pshift = record->data_page_shift;
 
 		if (record->data_addr_valid)
 			ea = record->data_addr;

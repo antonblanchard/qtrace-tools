@@ -135,7 +135,7 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 	if (record->insn_ra_valid)
 		hdr_flags |= QTRACE_HDR_IAR_RPN_PRESENT;
 
-	if (record->insn_page_size_valid)
+	if (record->insn_page_shift_valid)
 		hdr_flags |= QTRACE_HDR_IAR_PAGE_SIZE_PRESENT;
 
 	if (state->version)
@@ -157,14 +157,14 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 	if (record->insn_ra_valid) {
 		uint8_t pshift = 16;
 
-		if (record->insn_page_size_valid)
-			pshift = record->insn_page_size;
+		if (record->insn_page_shift_valid)
+			pshift = record->insn_page_shift;
 
 		put32(state, record->insn_ra >> pshift);
 	}
 
-	if (record->insn_page_size_valid)
-		put8(state, record->insn_page_size);
+	if (record->insn_page_shift_valid)
+		put8(state, record->insn_page_shift);
 
 	return true;
 }
@@ -221,13 +221,13 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_ra_valid)
 		flags |= QTRACE_DATA_RPN_PRESENT;
 
-	if (state->prev_record.data_page_size_valid)
+	if (state->prev_record.data_page_shift_valid)
 		flags2 |= QTRACE_DATA_PAGE_SIZE_PRESENT;
 
 	if (record->insn_ra_valid)
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
-	if (record->insn_page_size_valid)
+	if (record->insn_page_shift_valid)
 		flags2 |= QTRACE_IAR_PAGE_SIZE_PRESENT;
 
 	/* Some sort of branch */
@@ -278,8 +278,8 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_ra_valid) {
 		uint8_t pshift = 16;
 
-		if (state->prev_record.data_page_size_valid)
-			pshift = state->prev_record.data_page_size;
+		if (state->prev_record.data_page_shift_valid)
+			pshift = state->prev_record.data_page_shift;
 
 		put32(state, state->prev_record.data_ra >> pshift);
 	}
@@ -290,17 +290,17 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (record->insn_ra_valid) {
 		uint8_t pshift = 16;
 
-		if (record->insn_page_size_valid)
-			pshift = record->insn_page_size;
+		if (record->insn_page_shift_valid)
+			pshift = record->insn_page_shift;
 
 		put32(state, record->insn_ra >> pshift);
 	}
 
-	if (record->insn_page_size_valid)
-		put8(state, record->insn_page_size);
+	if (record->insn_page_shift_valid)
+		put8(state, record->insn_page_shift);
 
-	if (state->prev_record.data_page_size_valid)
-		put8(state, state->prev_record.data_page_size);
+	if (state->prev_record.data_page_shift_valid)
+		put8(state, state->prev_record.data_page_shift);
 
 	memcpy(&state->prev_record, record, sizeof(*record));
 
