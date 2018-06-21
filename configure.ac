@@ -35,7 +35,7 @@ elif test x"${ac_cv_header_bfd_h}" = "xno" -o \
 elif test x"${ac_cv_right_disassembler}" = "xno" ; then
 	AC_MSG_WARN([Require binutils >= 2.29])
 else
-	AC_DEFINE([USE_BFD], [1], [Use bfd library])
+	AC_DEFINE([BFD_NEW_DISASSEMBLER_ARGS], [1], [bfd library uses new disassembler args])
 fi
 
 AC_C_BIGENDIAN(dnl

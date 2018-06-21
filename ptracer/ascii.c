@@ -4,14 +4,14 @@
 #include <stdlib.h>
 #include <limits.h>
 #include "config.h"
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 #include <bfd.h>
 #include <dis-asm.h>
 #endif
 
 FILE *ascii_fout;
 
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 
 #define MAX_SYMS 256
 
@@ -215,6 +215,7 @@ void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
 	int i;
 
 	if (!disassembler_initialized) {
+#ifdef BFD_NEW_DISASSEMBLER_ARGS
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 		bfd_boolean is_big = false;
 #else
@@ -222,6 +223,11 @@ void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
 #endif
 
 		disassembler_p = disassembler(bfd_arch_powerpc, is_big, bfd_mach_ppc64, NULL);
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		disassembler_p = print_insn_little_powerpc;
+#else
+		disassembler_p = print_insn_big_powerpc;
+#endif
 
 		init_disassemble_info(&info, stdout, (fprintf_ftype)fprintf);
 		info.disassembler_options = "power9";
@@ -268,7 +274,7 @@ void ascii_close(void)
 
 void ascii_add_record(pid_t pid, uint32_t insn, uint32_t *insn_addr)
 {
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 	static bool initialized = false;
 
 	if (!initialized) {

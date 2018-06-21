@@ -21,7 +21,7 @@
 
 #include "config.h"
 
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 #include <bfd.h>
 #include <dis-asm.h>
 #endif
@@ -236,7 +236,7 @@ static void print_insn(uint32_t insn, unsigned int len)
 	}
 }
 
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 static asymbol **syms = NULL;
 static long symcount;
 
@@ -376,6 +376,7 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 	int i;
 
 	if (!disassembler_initialized) {
+#ifdef BFD_NEW_DISASSEMBLER_ARGS
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 		bfd_boolean is_big = false;
 #else
@@ -383,6 +384,11 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 #endif
 
 		disassembler_p = disassembler(bfd_arch_powerpc, is_big, bfd_mach_ppc64, NULL);
+#elif __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+		disassembler_p = print_insn_little_powerpc;
+#else
+		disassembler_p = print_insn_big_powerpc;
+#endif
 
 		init_disassemble_info(&info, stdout, (fprintf_ftype)fprintf);
 		info.disassembler_options = "power9";
@@ -636,7 +642,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	if (dump_nr)
 		goto next;
 
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 	if (qtbuild) {
 		static int first = 1;
 		static unsigned long last_ea;
@@ -736,7 +742,7 @@ static void usage(void)
 	fprintf(stderr, "Usage: qtdis [OPTION]... [FILE]\n\n");
 	fprintf(stderr, "\t-r\t\tShow raw instruction\n");
 	fprintf(stderr, "\t-v\t\t\tprint verbose info\n");
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 	fprintf(stderr, "\t-e <file>\t\tresolve symbols using this file\n");
 	fprintf(stderr, "\t-b\t\t\toutput qtbuild assembly\n");
 #endif
@@ -758,7 +764,7 @@ int main(int argc, char *argv[])
 			break;
 
 		switch (c) {
-#ifdef USE_BFD
+#ifdef HAVE_BFD_H
 		case 'e':
 			syminit(optarg, "elf64-powerpc");
 			break;
