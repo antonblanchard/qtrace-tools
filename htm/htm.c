@@ -892,7 +892,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 	if (insn.info.dra && !insn.info.esid && insn.dra.page_size > 0) {
 		rec.insn.data_ra_valid = true;
-		rec.insn.data_ra = insn.dra.page_address;
+		rec.insn.data_ra = insn.dra.page_address >> insn.dra.page_size;
 		rec.insn.data_page_shift_valid = true;
 		rec.insn.data_page_shift = insn.dra.page_size;
 	} else {
