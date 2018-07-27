@@ -114,6 +114,8 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 #endif
 	}
 
+	assert(value);
+
 	*value = t.value;
 
 	word1 = htm_bits(t.value, 0, 31);
