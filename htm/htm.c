@@ -929,6 +929,8 @@ static int htm_decode_one(struct htm_decode_state *state)
 	if (ret < 0) {
 		return ret;
 	}
+	if (value == 0)
+		return 1; /* skip zero data */
 
 	tag = htm_uint32(htm_bits(value, 0, 19));
 	if (tag == 0xACEFF) {
