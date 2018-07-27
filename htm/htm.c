@@ -452,7 +452,7 @@ static int htm_decode_insn_dra(struct htm_decode_state *state,
 			       struct htm_insn_dra *rec)
 {
 	unsigned int tag;
-	uint64_t address, mask;
+	uint64_t address;
 	uint8_t page_size;
 
 	tag = htm_uint32(htm_bits(value, 0, 19));
@@ -467,6 +467,10 @@ static int htm_decode_insn_dra(struct htm_decode_state *state,
 	page_size = htm_uint32(htm_bits(value, 0, 1));
 
 	switch (page_size) {
+		case 0:
+			/* Used for MMU off and 4k pages */
+			rec->page_size = 12;
+			break;
 		case 1:
 			rec->page_size = 16;
 			break;
@@ -478,11 +482,9 @@ static int htm_decode_insn_dra(struct htm_decode_state *state,
 			return -1;
 	}
 
-	address = htm_bits(value, 2, 39) << rec->page_size;
-	mask = 1;
-	mask = (mask << rec->page_size) - 1;
+	address = htm_bits(value, 2, 39) << 12;
 
-	rec->page_address = address | (state->insn_addr & mask);
+	rec->page_address = address ;
 
 	rec->dh = htm_bit(value, 63);
 
