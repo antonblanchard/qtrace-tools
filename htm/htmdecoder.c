@@ -80,8 +80,14 @@ static void print_record_time(struct htm_record_time *r)
 static void print_record_insn(struct qtrace_record *r)
 {
 	printf("INSN ");
-	printf(" 0x%016"PRIx64" ", r->insn_addr);
-	printf(" %08x", r->insn);
+	printf(" iea:0x%016"PRIx64" ", r->insn_addr);
+	printf(" op:%08x", r->insn);
+	if (r->data_addr_valid)
+		printf(" dea:%016"PRIx64, r->data_addr);
+	if (r->data_ra_valid)
+		printf(" dra:%016"PRIx64, r->data_ra);
+	if (r->data_page_shift_valid)
+		printf(" pgsize:%i", r->data_page_shift);
 	printf("\n");
 }
 
