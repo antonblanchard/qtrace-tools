@@ -58,16 +58,18 @@ static int htm_read(int fd, uint8_t *buf, size_t len)
 {
 	ssize_t nread;
 
-	nread = read(fd, buf, len);
-	if (nread == -1) {
-		fprintf(stderr, "Read failed, errno=%d\n", errno);
-		return -1;
-	} else if (nread == 0)
-		return 0;
-	else if (nread != len) {
-		fprintf(stderr, "Partial read, %zi bytes\n", nread);
-		return -1;
-	}
+	do {
+		nread = read(fd, buf, len);
+		if (nread == 0)
+			return 0; /* EOF */
+		if (nread == -1) {
+			fprintf(stderr, "Read failed, errno=%d\n", errno);
+			printf("Read failed, errno=%d\n", errno);
+			return -1;
+		}
+		len -= nread;
+		buf += nread;
+	} while (len);
 
 	return 1;
 }
