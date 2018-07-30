@@ -755,10 +755,13 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 		ret = htm_decode_insn_iea(state, value, &insn.iea);
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.iea = 0;
+			state->insn_addr += 4;
+			htm_rewind(state, value);
+		} else {
+			state->insn_addr = insn.iea.address;
 		}
-
-		state->insn_addr = insn.iea.address;
 	} else {
 		state->insn_addr += 4;
 	}
@@ -771,7 +774,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 		ret = htm_decode_insn_ira(state, value, &insn.ira);
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.ira = 0;
+			htm_rewind(state, value);
 		}
 
 		if (insn.ira.page_size == 1) {
@@ -805,7 +810,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			ret = htm_decode_insn_dea(state, value, &insn.dea);
 		}
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.dea = 0;
+			htm_rewind(state, value);
 		}
 	}
 
@@ -821,7 +828,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			ret = htm_decode_insn_dra(state, value, &insn.dra);
 		}
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so mark so dra as invalid and retry */
+			insn.info.dra = 0;
+			htm_rewind(state, value);
 		}
 
 		if (insn.info.esid) {
