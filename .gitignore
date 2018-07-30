@@ -1,6 +1,7 @@
 .deps/
 .dirstamp
 Makefile.in
+Makefile
 aclocal.m4
 autom4te.cache/
 compile
@@ -15,6 +16,11 @@ depcomp
 install-sh
 missing
 stamp-h1
+branch/link_stack
+htm/htmdecoder
+qtbuild/qtbuild
+qtdis/qtdis
+qtrace-bbv/qtrace-bbv
 *.o
 *.a
 *~

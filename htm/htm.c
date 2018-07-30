@@ -58,16 +58,18 @@ static int htm_read(int fd, uint8_t *buf, size_t len)
 {
 	ssize_t nread;
 
-	nread = read(fd, buf, len);
-	if (nread == -1) {
-		fprintf(stderr, "Read failed, errno=%d\n", errno);
-		return -1;
-	} else if (nread == 0)
-		return 0;
-	else if (nread != len) {
-		fprintf(stderr, "Partial read, %zi bytes\n", nread);
-		return -1;
-	}
+	do {
+		nread = read(fd, buf, len);
+		if (nread == 0)
+			return 0; /* EOF */
+		if (nread == -1) {
+			fprintf(stderr, "Read failed, errno=%d\n", errno);
+			printf("Read failed, errno=%d\n", errno);
+			return -1;
+		}
+		len -= nread;
+		buf += nread;
+	} while (len);
 
 	return 1;
 }
@@ -86,9 +88,23 @@ struct htm_decode_state {
 	uint32_t insn;
 };
 
-static void htm_rewind(struct htm_decode_state *state)
+static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
-	lseek(state->fd, SEEK_CUR, -8);
+	uint32_t word1, word2;
+
+	if (lseek(state->fd, -8, SEEK_CUR) == -1) {
+		perror("Seek failed");
+		assert(0);
+	}
+
+	/* rewide state info */
+	state->nr--;
+	state->stat.total_records_scanned--;
+	word1 = htm_bits(value, 0, 31);
+	word2 = htm_bits(value, 32, 63);
+	state->stat.checksum -= (word1 + word2);
+
+	printf("%s %i %016lx\n", __func__, state->nr, state->stat.checksum);
 }
 
 static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
@@ -739,10 +755,13 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 		ret = htm_decode_insn_iea(state, value, &insn.iea);
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.iea = 0;
+			state->insn_addr += 4;
+			htm_rewind(state, value);
+		} else {
+			state->insn_addr = insn.iea.address;
 		}
-
-		state->insn_addr = insn.iea.address;
 	} else {
 		state->insn_addr += 4;
 	}
@@ -755,7 +774,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 		ret = htm_decode_insn_ira(state, value, &insn.ira);
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.ira = 0;
+			htm_rewind(state, value);
 		}
 
 		if (insn.ira.page_size == 1) {
@@ -789,7 +810,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			ret = htm_decode_insn_dea(state, value, &insn.dea);
 		}
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so as invalid and retry */
+			insn.info.dea = 0;
+			htm_rewind(state, value);
 		}
 	}
 
@@ -805,7 +828,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			ret = htm_decode_insn_dra(state, value, &insn.dra);
 		}
 		if (ret < 0) {
-			goto fail;
+			/* invalid record so mark so dra as invalid and retry */
+			insn.info.dra = 0;
+			htm_rewind(state, value);
 		}
 
 		if (insn.info.esid) {
@@ -949,7 +974,7 @@ static int htm_decode_one(struct htm_decode_state *state)
 			 * Incomplete instruction sequence.
 			 * Retry as next record.
 			 */
-			htm_rewind(state);
+			htm_rewind(state, value);
 		}
 	}
 
