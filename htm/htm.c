@@ -429,7 +429,7 @@ static int htm_decode_insn_ira(struct htm_decode_state *state,
 			return -1;
 	}
 
-	address = htm_bits(value, 0, 37) << rec->page_size;
+	address = htm_bits(value, 0, 37) << 12;
 	mask = 1;
 	mask = (mask << rec->page_size) - 1;
 
@@ -904,7 +904,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 	if (insn.info.ira && !insn.info.esid && insn.ira.page_size > 0) {
 		rec.insn.insn_ra_valid = true;
-		rec.insn.insn_ra = insn.ira.address >> insn.ira.page_size;
+		rec.insn.insn_ra = insn.ira.address;
 		rec.insn.insn_page_shift_valid = true;
 		rec.insn.insn_page_shift = insn.ira.page_size;
 	} else {
