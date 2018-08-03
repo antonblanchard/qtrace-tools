@@ -779,11 +779,11 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			htm_rewind(state, value);
 		}
 
-		if (insn.ira.page_size == 1) {
+		if (insn.ira.page_size == 12) {
 			state->stat.total_instruction_pages_4k++;
-		} else if (insn.ira.page_size == 2) {
+		} else if (insn.ira.page_size == 16) {
 			state->stat.total_instruction_pages_64k++;
-		} else if (insn.ira.page_size == 3) {
+		} else if (insn.ira.page_size == 24) {
 			state->stat.total_instruction_pages_16m++;
 		}
 
