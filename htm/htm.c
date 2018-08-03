@@ -14,6 +14,7 @@
 #include <assert.h>
 
 #include "htm.h"
+#include "tlb.h"
 
 #define HTM_STAMP_RECORD	0xACEFF0
 #define HTM_STAMP_COMPLETE	0xACEFF1
@@ -723,13 +724,28 @@ int opcode_type(uint32_t opcode)
 	}
 }
 
+/* This is basically ilog2() */
+static unsigned int pagesize_to_shift(uint64_t size)
+{
+	if (size == 4096)
+		return 12;
+	if (size == 65536)
+		return 16;
+	if (size == 16777216)
+		return 24;
+	assert(1);
+	return 0;
+}
+
 static int htm_decode_insn(struct htm_decode_state *state,
 			   uint64_t value)
 {
 	struct htm_insn insn = { 0 };
 	struct htm_record rec;
+	uint64_t tlb_flags, tlb_pagesize;
 	int optype;
 	int ret;
+	bool software_tlb;
 
 	state->stat.total_records_processed++;
 	state->stat.total_instruction_scanned++;
@@ -745,6 +761,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		goto fail;
 	}
 
+	software_tlb = false;
 	if (insn.info.iea) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
@@ -759,12 +776,24 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			htm_rewind(state, value);
 		} else {
 			state->insn_addr = insn.iea.address;
+			tlb_flags = insn.iea.msrir ? TLB_FLAGS_RELOC : 0;
+			/* Only lookup translation in the TLB if we
+			 * didn't get one in the trace
+			 */
+			if (!insn.info.ira &&
+			    tlb_ra_get(state->insn_addr, tlb_flags,
+				       &insn.ira.address, &tlb_pagesize) ){
+				insn.info.ira = true;
+				insn.ira.page_size = pagesize_to_shift(tlb_pagesize);
+				insn.ira.esid_to_irpn = 0; // FIXME ??
+				software_tlb = true;
+			}
 		}
 	} else {
 		state->insn_addr += 4;
 	}
 
-	if (insn.info.ira) {
+	if (insn.info.ira & !software_tlb) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
@@ -791,6 +820,10 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			state->stat.instructions_without_i_vsid++;
 		}
 
+		tlb_flags = insn.iea.msrir ? TLB_FLAGS_RELOC : 0;
+		tlb_pagesize = 1 << insn.ira.page_size;
+		tlb_ra_set(state->insn_addr, tlb_flags, insn.ira.address,
+			   tlb_pagesize);
 		state->stat.instructions_with_ira++;
 	} else {
 		state->stat.instructions_without_ira++;
@@ -998,6 +1031,8 @@ int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 		.private_data = private_data,
 	};
 
+	tlb_init();
+
 	do {
 		ret = htm_decode_one(&state);
 	} while (ret > 0);
@@ -1005,6 +1040,8 @@ int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 	if (result != NULL) {
 		*result = state.stat;
 	}
+
+	tlb_exit();
 
 	return ret;
 }

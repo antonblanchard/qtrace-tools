@@ -20,6 +20,7 @@
 #include <qtlib/qtwriter.h>
 
 #include "htm.h"
+#include "tlb.h"
 
 static void print_record_record(struct htm_record_record *r)
 {
@@ -190,6 +191,7 @@ static void print_stat(struct htm_decode_stat *stat)
 	printf("%48s : %u\n", "4K instruction pages", stat->total_instruction_pages_4k);
 	printf("%48s : %u\n", "64K instruction pages", stat->total_instruction_pages_64k);
 	printf("%48s : %u\n", "16M instruction pages", stat->total_instruction_pages_16m);
+	tlb_dump();
 }
 
 static void usage(const char *prog)
