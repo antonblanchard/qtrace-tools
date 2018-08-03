@@ -103,8 +103,6 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	word1 = htm_bits(value, 0, 31);
 	word2 = htm_bits(value, 32, 63);
 	state->stat.checksum -= (word1 + word2);
-
-	printf("%s %i %016lx\n", __func__, state->nr, state->stat.checksum);
 }
 
 static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
