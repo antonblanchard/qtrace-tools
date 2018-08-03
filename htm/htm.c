@@ -934,8 +934,6 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		rec.insn.data_page_shift_valid = false;
 	}
 
-	rec.insn.branch = insn.info.branch;
-
 	if (state->fn)
 		state->fn(&rec, state->private_data);
 
