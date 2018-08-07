@@ -53,5 +53,5 @@ ptracer_ptracer_SOURCES = \
 ptracer_ptracer_LDADD = libqtrace.a
 
 htm_htmdecoder_SOURCES = \
-	htm/htm.c htm/htmdecoder.c
+	htm/htm.c htm/htmdecoder.c htm/tlb.c
 htm_htmdecoder_LDADD = libqtrace.a

@@ -20,6 +20,7 @@
 #include <qtlib/qtwriter.h>
 
 #include "htm.h"
+#include "tlb.h"
 
 static void print_record_record(struct htm_record_record *r)
 {
@@ -80,14 +81,18 @@ static void print_record_time(struct htm_record_time *r)
 static void print_record_insn(struct qtrace_record *r)
 {
 	printf("INSN ");
-	printf(" iea:0x%016"PRIx64" ", r->insn_addr);
+	printf(" iea:%016"PRIx64, r->insn_addr);
 	printf(" op:%08x", r->insn);
+	if (r->insn_ra_valid)
+		printf(" ira:%016"PRIx64, r->insn_ra);
+	if (r->insn_page_shift_valid)
+		printf(" ira:%i", r->insn_page_shift);
 	if (r->data_addr_valid)
 		printf(" dea:%016"PRIx64, r->data_addr);
 	if (r->data_ra_valid)
 		printf(" dra:%016"PRIx64, r->data_ra);
 	if (r->data_page_shift_valid)
-		printf(" pgsize:%i", r->data_page_shift);
+		printf(" dpgsize:%i", r->data_page_shift);
 	printf("\n");
 }
 
@@ -186,6 +191,7 @@ static void print_stat(struct htm_decode_stat *stat)
 	printf("%48s : %u\n", "4K instruction pages", stat->total_instruction_pages_4k);
 	printf("%48s : %u\n", "64K instruction pages", stat->total_instruction_pages_64k);
 	printf("%48s : %u\n", "16M instruction pages", stat->total_instruction_pages_16m);
+	tlb_dump();
 }
 
 static void usage(const char *prog)
