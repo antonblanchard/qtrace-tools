@@ -740,7 +740,7 @@ static unsigned int pagesize_to_shift(uint64_t size)
 static int htm_decode_insn(struct htm_decode_state *state,
 			   uint64_t value)
 {
-	struct htm_insn insn = { 0 };
+	struct htm_insn insn = { { 0 } };
 	struct htm_record rec;
 	uint64_t tlb_flags, tlb_pagesize;
 	int optype;

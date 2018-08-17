@@ -230,11 +230,13 @@ static bool show_raw_insn;
 
 static void print_insn(uint32_t insn, unsigned int len)
 {
+	unsigned int i;
+
 	if (show_raw_insn) {
 		uint8_t *p = (uint8_t *)(uint32_t *)&insn;
 
 		fprintf(stdout, "\t");
-		for (unsigned long i = 0; i < len; i++)
+		for (i = 0; i < len; i++)
 			fprintf(stdout, "%02x ", p[i]);
 	}
 }
@@ -446,13 +448,13 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	uint32_t insn;
 	uint16_t flags, flags2 = 0, flags3 = 0;
 	uint64_t iar = 0;
-	uint64_t iar_rpn;
-	uint64_t iar_seq_rpn;
-	uint8_t iar_page_size;
-	uint8_t iar_seq_page_size;
+	uint64_t iar_rpn = 0;
+	uint64_t iar_seq_rpn = 0;
+	uint8_t iar_page_size = 0;
+	uint8_t iar_seq_page_size = 0;
 	uint64_t data_address = 0;
-	uint32_t data_rpn;
-	uint8_t data_page_size;
+	uint32_t data_rpn = 0;
+	uint8_t data_page_size = 0;
 	uint8_t node = 0;
 	uint8_t term_node = 0, term_code = 0;
 	void *q;
