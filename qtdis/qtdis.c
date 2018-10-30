@@ -18,6 +18,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <assert.h>
 
 #include "config.h"
 
@@ -27,6 +28,7 @@
 #endif
 
 #include <qtrace.h>
+#include <ppcstats.h>
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
@@ -45,9 +47,10 @@ static int qtbuild;
 static unsigned int verbose;
 static uint32_t version;
 static int dump_nr;
+static bool show_stats_only;
 
 static unsigned int get_radix_insn_ptes(uint16_t flags3)
-{
+	{
 	unsigned int host_mode;
 	unsigned int guest_mode;
 
@@ -228,7 +231,7 @@ static unsigned long parse_header(void *p, unsigned long *iar)
 
 static bool show_raw_insn;
 
-static void print_insn(uint32_t insn, unsigned int len)
+static void print_raw_insn(uint32_t insn, unsigned int len)
 {
 	unsigned int i;
 
@@ -416,6 +419,8 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 	info.buffer_vma = ea;
 	info.buffer_length = bufsize;
 
+	if (show_stats_only)
+		goto out;
 	if (!disassembler_p) {
 		fprintf(stdout, "0x%x", *buf);
 	} else {
@@ -423,6 +428,10 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 		while (i < bufsize)
 			i += disassembler_p((unsigned long)ea, &info);
 	}
+
+out:
+	if (show_stats_only)
+		ppcstats_log_inst(ea, *buf);
 }
 #endif
 
@@ -673,14 +682,16 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
 			fprintf(stdout, "\t; ldst 0x%016lx", data_address);
 	} else {
-		__print_address(*ea);
-		print_insn(insn, sizeof(insn));
-		fprintf(stdout, "\t");
+		if (!show_stats_only) {
+			__print_address(*ea);
+			print_raw_insn(insn, sizeof(insn));
+			fprintf(stdout, "\t");
+		}
 		disasm(*ea, &insn, sizeof(insn));
 	}
 #else
 	fprintf(stdout, "%016lx", *ea);
-	print_insn(insn, sizeof(insn));
+	print_raw_insn(insn, sizeof(insn));
 	fprintf(stdout, "\t0x%x", insn);
 #endif
 
@@ -734,7 +745,8 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 			fprintf(stdout, " TERM NODE 0x%02x TERM CODE 0x%02x", term_node, term_code);
 	}
 
-	fprintf(stdout, "\n");
+	if (!show_stats_only)
+		fprintf(stdout, "\n");
 next:
 	if (flags & QTRACE_IAR_PRESENT)
 		*ea = iar;
@@ -755,6 +767,7 @@ static void usage(void)
 #endif
 	fprintf(stderr, "\t-d <nr>\t\t\tdump with strategy nr\n");
 	fprintf(stderr, "\t       \t\t\t1. ifetch, load, store addresses\n");
+	fprintf(stderr, "\t-s \t\t\tonly dump stats\n");
 }
 
 int main(int argc, char *argv[])
@@ -765,8 +778,10 @@ int main(int argc, char *argv[])
 	unsigned long size, x;
 	unsigned long ea = 0;
 
+	show_stats_only = false;
+
 	while (1) {
-		signed char c = getopt(argc, argv, "e:d:rvb");
+		signed char c = getopt(argc, argv, "e:d:rvbs");
 		if (c < 0)
 			break;
 
@@ -786,6 +801,10 @@ int main(int argc, char *argv[])
 			show_raw_insn = true;
 			break;
 
+		case 's':
+			show_stats_only = true;
+			break;
+
 		case 'v':
 			verbose++;
 			break;
@@ -801,6 +820,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	if (show_stats_only && (verbose || show_raw_insn)) {
+		fprintf(stderr, "Dumping stats (-s) can only be used alone\n");
+		exit(1);
+	}
+	
 	fd = open(argv[optind], O_RDONLY);
 	if (fd < 0) {
 		perror("open");
@@ -839,6 +863,9 @@ int main(int argc, char *argv[])
 		p += x;
 		size -= x;
 	}
+
+	if (show_stats_only)
+		ppcstats_print();
 
 	return 0;
 }

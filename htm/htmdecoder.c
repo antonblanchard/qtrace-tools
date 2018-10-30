@@ -19,8 +19,11 @@
 
 #include <qtlib/qtwriter.h>
 
+#include <ppcstats.h>
 #include "htm.h"
 #include "tlb.h"
+
+bool show_stats_only;
 
 static void print_record_record(struct htm_record_record *r)
 {
@@ -210,7 +213,9 @@ int main(int argc, char * const argv[])
 	bool debug = false;
 	bool detail = false;
 
-	while ((opt = getopt(argc, argv, "Ddo:")) != -1) {
+	show_stats_only = false;
+
+	while ((opt = getopt(argc, argv, "Ddo:s")) != -1) {
 		switch (opt) {
 			case 'D':
 				debug = true;
@@ -223,6 +228,10 @@ int main(int argc, char * const argv[])
 
 			case 'o':
 				output = optarg;
+				break;
+
+			case 's':
+				show_stats_only = true;
 				break;
 
 			default: /* '?' */
@@ -268,6 +277,10 @@ int main(int argc, char * const argv[])
 	if (detail || debug) {
 		print_stat(&stat);
 	}
+
+	/* FIXME: This is a layering violation, but YOLO */
+	if (show_stats_only)
+		ppcstats_print();
 
 	qtwriter_close(&state.qt);
 	close(fd);

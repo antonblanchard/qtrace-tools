@@ -13,6 +13,8 @@
 #include <endian.h>
 #include <assert.h>
 
+#include <ppcstats.h>
+
 #include "htm.h"
 #include "tlb.h"
 
@@ -932,6 +934,10 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	rec.type = HTM_RECORD_INSN;
 	rec.insn.insn = state->insn;
 	rec.insn.insn_addr = state->insn_addr;
+
+	ppcstats_log_inst(state->insn_addr, state->insn);
+	if (!state->fd)
+		return 0;
 
 	if (insn.info.ira && !insn.info.esid && insn.ira.page_size > 0) {
 		rec.insn.insn_ra_valid = true;
