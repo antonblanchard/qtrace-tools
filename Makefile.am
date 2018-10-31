@@ -3,11 +3,11 @@ AUTOMAKE_OPTIONS = foreign
 AM_CFLAGS = -Wall -Werror -O2 \
 	    -I$(top_srcdir)/qtlib
 
-lib_LIBRARIES = libqtrace.a ppcstats.a
+lib_LIBRARIES = libqtrace.a libppcstats.a
 
 libqtrace_a_SOURCES = qtlib/qtreader.c qtlib/qtwriter.c
 
-ppcstats_a_SOURCES = qtlib/ppcstats.c
+libppcstats_a_SOURCES = qtlib/ppcstats.c
 
 qtlib_TESTS = qtlib/tests/test1 qtlib/tests/test2 \
 	      qtlib/tests/test3 qtlib/tests/test4
@@ -34,7 +34,7 @@ branch_link_stack_SOURCES = branch/link_stack.c
 branch_link_stack_LDADD = libqtrace.a
 
 qtdis_qtdis_SOURCES = qtdis/qtdis.c
-qtdis_qtdis_LDADD = libqtrace.a ppcstats.a
+qtdis_qtdis_LDADD = libqtrace.a libppcstats.a
 
 qtrace_bbv_qtrace_bbv_SOURCES = \
 	qtrace-bbv/ccan/hash/hash.c \
@@ -56,4 +56,4 @@ ptracer_ptracer_LDADD = libqtrace.a
 
 htm_htmdecoder_SOURCES = \
 	htm/htm.c htm/htmdecoder.c htm/tlb.c
-htm_htmdecoder_LDADD = libqtrace.a ppcstats.a
+htm_htmdecoder_LDADD = libqtrace.a libppcstats.a
