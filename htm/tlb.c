@@ -299,6 +299,7 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 	t = &tlb.tlb[index];
 
 	/* Generate new entry */
+	memset(&tnew, 0, sizeof(tnew));
 	tnew.size = pagesize;
 	tnew.ea = ea & tlb_mask_rpn(&tnew);
 	tnew.ra = ra & tlb_mask_rpn(&tnew);
