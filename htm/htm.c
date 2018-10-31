@@ -25,7 +25,7 @@
 #define HTM_STAMP_SYNC		0xACEFF4
 #define HTM_STAMP_TIME		0xACEFF8
 
-static unsigned int htm_uint32(uint64_t value)
+static inline unsigned int htm_uint32(uint64_t value)
 {
 	assert(value <= UINT32_MAX);
 
@@ -33,7 +33,7 @@ static unsigned int htm_uint32(uint64_t value)
 }
 
 /* Big-endian format, 0-msb, 63-lsb */
-static uint64_t htm_bits(uint64_t value, int start, int end)
+static inline uint64_t htm_bits(uint64_t value, int start, int end)
 {
 	uint64_t mask;
 	int nbits;
@@ -48,7 +48,7 @@ static uint64_t htm_bits(uint64_t value, int start, int end)
 	return (value & mask) >> (63 - end);
 }
 
-static bool htm_bit(uint64_t value, int bit)
+static inline bool htm_bit(uint64_t value, int bit)
 {
 	if (htm_uint32(htm_bits(value, bit, bit)) == 1) {
 		return true;
@@ -57,7 +57,7 @@ static bool htm_bit(uint64_t value, int bit)
 	return false;
 }
 
-static int htm_read(FILE *fd, uint8_t *buf, size_t len)
+static inline int htm_read(FILE *fd, uint8_t *buf, size_t len)
 {
 	size_t nread;
 
