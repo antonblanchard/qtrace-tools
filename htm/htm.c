@@ -25,7 +25,7 @@
 #define HTM_STAMP_SYNC		0xACEFF4
 #define HTM_STAMP_TIME		0xACEFF8
 
-static unsigned int htm_uint32(uint64_t value)
+static inline unsigned int htm_uint32(uint64_t value)
 {
 	assert(value <= UINT32_MAX);
 
@@ -33,7 +33,7 @@ static unsigned int htm_uint32(uint64_t value)
 }
 
 /* Big-endian format, 0-msb, 63-lsb */
-static uint64_t htm_bits(uint64_t value, int start, int end)
+static inline uint64_t htm_bits(uint64_t value, int start, int end)
 {
 	uint64_t mask;
 	int nbits;
@@ -48,7 +48,7 @@ static uint64_t htm_bits(uint64_t value, int start, int end)
 	return (value & mask) >> (63 - end);
 }
 
-static bool htm_bit(uint64_t value, int bit)
+static inline bool htm_bit(uint64_t value, int bit)
 {
 	if (htm_uint32(htm_bits(value, bit, bit)) == 1) {
 		return true;
@@ -57,12 +57,12 @@ static bool htm_bit(uint64_t value, int bit)
 	return false;
 }
 
-static int htm_read(int fd, uint8_t *buf, size_t len)
+static inline int htm_read(FILE *fd, uint8_t *buf, size_t len)
 {
-	ssize_t nread;
+	size_t nread;
 
 	do {
-		nread = read(fd, buf, len);
+		nread = fread(buf, 1, len, fd);
 		if (nread == 0)
 			return 0; /* EOF */
 		if (nread == -1) {
@@ -78,7 +78,7 @@ static int htm_read(int fd, uint8_t *buf, size_t len)
 }
 
 struct htm_decode_state {
-	int fd;
+	FILE *fd;
 	int nr;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
@@ -95,7 +95,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
 	uint32_t word1, word2;
 
-	if (lseek(state->fd, -8, SEEK_CUR) == -1) {
+	if (fseek(state->fd, -8, SEEK_CUR) == -1) {
 		perror("Seek failed");
 		assert(0);
 	}
@@ -116,20 +116,14 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	} t;
 	uint8_t bytes[8];
 	uint32_t word1, word2;
-	int ret, i;
+	int ret;
 
 	ret = htm_read(state->fd, bytes, sizeof(bytes));
 	if (ret <= 0) {
 		return -1;
 	}
 
-	for (i=0; i<8; i++) {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		t.bytes[7-i] = bytes[i];
-#else
-		t.bytes[i] = bytes[i];
-#endif
-	}
+	t.value = be64toh( *(uint64_t *)bytes );
 
 	assert(value);
 
@@ -1026,7 +1020,7 @@ static int htm_decode_one(struct htm_decode_state *state)
  *  -1 : error
  *   0 : success
  */
-int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
+int htm_decode(FILE *fd, htm_record_fn_t fn, void *private_data,
 	       struct htm_decode_stat *result)
 {
 	int ret;

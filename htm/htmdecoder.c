@@ -209,7 +209,8 @@ int main(int argc, char * const argv[])
 	const char *input = NULL;
 	const char *output = NULL;
 	char path[PATH_MAX];
-	int opt, ret, fd;
+	int opt, ret;
+	FILE *fd;
 	bool debug = false;
 	bool detail = false;
 
@@ -256,16 +257,15 @@ int main(int argc, char * const argv[])
 		exit(1);
 	}
 
-	fd = open(input, O_RDONLY);
-	if (fd == -1) {
+	fd = fopen(input, "r");
+	if (fd == NULL) {
 		fprintf(stderr, "Failed to open %s - %s\n",
 			argv[1], strerror(errno));
 		exit(1);
 	}
-
 	if (!qtwriter_open(&state.qt, path, 0)) {
 		fprintf(stderr, "Failed to open output file %s\n", path);
-		close(fd);
+		fclose(fd);
 		exit(1);
 	}
 
@@ -283,7 +283,7 @@ int main(int argc, char * const argv[])
 		ppcstats_print();
 
 	qtwriter_close(&state.qt);
-	close(fd);
+	fclose(fd);
 
 	exit(0);
 }

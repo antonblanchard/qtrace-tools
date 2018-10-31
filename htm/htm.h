@@ -112,7 +112,7 @@ struct htm_decode_stat {
 
 typedef void (*htm_record_fn_t)(struct htm_record *rec, void *private_data);
 
-int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
+int htm_decode(FILE *fd, htm_record_fn_t fn, void *private_data,
 	       struct htm_decode_stat *stat);
 
 #endif /* __HTM_H__ */
