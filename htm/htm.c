@@ -116,20 +116,14 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	} t;
 	uint8_t bytes[8];
 	uint32_t word1, word2;
-	int ret, i;
+	int ret;
 
 	ret = htm_read(state->fd, bytes, sizeof(bytes));
 	if (ret <= 0) {
 		return -1;
 	}
 
-	for (i=0; i<8; i++) {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		t.bytes[7-i] = bytes[i];
-#else
-		t.bytes[i] = bytes[i];
-#endif
-	}
+	t.value = be64toh( *(uint64_t *)bytes );
 
 	assert(value);
 
