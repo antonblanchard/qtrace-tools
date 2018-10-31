@@ -57,12 +57,12 @@ static bool htm_bit(uint64_t value, int bit)
 	return false;
 }
 
-static int htm_read(int fd, uint8_t *buf, size_t len)
+static int htm_read(FILE *fd, uint8_t *buf, size_t len)
 {
-	ssize_t nread;
+	size_t nread;
 
 	do {
-		nread = read(fd, buf, len);
+		nread = fread(buf, 1, len, fd);
 		if (nread == 0)
 			return 0; /* EOF */
 		if (nread == -1) {
@@ -78,7 +78,7 @@ static int htm_read(int fd, uint8_t *buf, size_t len)
 }
 
 struct htm_decode_state {
-	int fd;
+	FILE *fd;
 	int nr;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
@@ -95,7 +95,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
 	uint32_t word1, word2;
 
-	if (lseek(state->fd, -8, SEEK_CUR) == -1) {
+	if (fseek(state->fd, -8, SEEK_CUR) == -1) {
 		perror("Seek failed");
 		assert(0);
 	}
@@ -1026,7 +1026,7 @@ static int htm_decode_one(struct htm_decode_state *state)
  *  -1 : error
  *   0 : success
  */
-int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
+int htm_decode(FILE *fd, htm_record_fn_t fn, void *private_data,
 	       struct htm_decode_stat *result)
 {
 	int ret;
