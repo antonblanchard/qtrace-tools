@@ -15,10 +15,10 @@
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <stdlib.h>
 
 #include "tlb.h"
 
-#define TLB_SIZE 256
 #define TLB_FLAGS_AVALIABLE (TLB_FLAGS_RELOC)
 struct tlbe {
 	uint64_t ea;
@@ -30,7 +30,8 @@ struct tlbe {
 	bool valid;
 };
 struct tlb_cache {
-	struct tlbe tlb[TLB_SIZE];
+	struct tlbe *tlb;
+	int size;
 	int next;
 	int translations;
 	int no_translation;
@@ -162,7 +163,7 @@ static inline void tlb_validate(void)
 	int i;
 	bool valid_last;
 
-	assert(tlb.next <= TLB_SIZE);
+	assert(tlb.next <= tlb.size);
 
 	/* Check for overlaps */
 	for (i = 0; i < tlb.next; i++) {
@@ -177,7 +178,7 @@ static inline void tlb_validate(void)
 
 	/* Check for holes */
 	valid_last = true;
-	for (i = 0; i < TLB_SIZE; i++) {
+	for (i = 0; i < tlb.size; i++) {
 		t = &tlb.tlb[i];
 		assert(!t->valid || valid_last);
 		valid_last = t->valid;
@@ -205,7 +206,6 @@ static inline uint64_t tlb_translate(uint64_t ea, uint64_t flags,
 
 void tlb_init(void)
 {
-	memset(&tlb, 0, sizeof(tlb));
 	tlb_validate();
 }
 
@@ -241,6 +241,35 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	return true;
 }
 
+void tlb_allocate(void)
+{
+	int size_new;
+
+	struct tlbe *t;
+//	printf("Allocating new TLB size: %i\n", tlb.size);
+
+	if (!tlb.tlb) {
+		/* Allocate initial TLB */
+		tlb.tlb = malloc(sizeof(struct tlbe));
+		assert(tlb.tlb);
+		tlb.size = 1;
+		memset(tlb.tlb, 0, sizeof(struct tlbe));
+		return;
+	}
+
+	/* Double the size of the TLB */
+	size_new = tlb.size * 2;
+	tlb.tlb = realloc(tlb.tlb, size_new*sizeof(struct tlbe));
+	assert(tlb.tlb);
+	/* zero new part */
+	t = &tlb.tlb[tlb.size];
+	memset(t, 0, tlb.size*sizeof(struct tlbe));
+	tlb.size = size_new;
+
+	tlb_validate();
+	return;
+}
+
 /*
  * Set a new entry.
  * If old entry exists, delete it
@@ -254,7 +283,6 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 
 //	tlb_debug = 1;
 
-
 	tlb_pagesize_validate(pagesize);
 	tlb_flags_validate(flags);
 
@@ -262,14 +290,16 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 	if (index < 0) {
 		/* No entry found, so put it at the end */
 		index = tlb.next;
+		if (tlb.size == tlb.next)
+			tlb_allocate();
 		tlb.next++;
-		assert(tlb.next <= TLB_SIZE);
 	}
 	tlb_debug = 0;
 
 	t = &tlb.tlb[index];
 
 	/* Generate new entry */
+	memset(&tnew, 0, sizeof(tnew));
 	tnew.size = pagesize;
 	tnew.ea = ea & tlb_mask_rpn(&tnew);
 	tnew.ra = ra & tlb_mask_rpn(&tnew);
