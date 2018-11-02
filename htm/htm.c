@@ -79,7 +79,7 @@ static inline int htm_read(FILE *fd, uint8_t *buf, size_t len)
 
 struct htm_decode_state {
 	FILE *fd;
-	int nr;
+	int nr, nr_rewind, error_count;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
 	void *private_data;
@@ -95,12 +95,19 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
 	uint32_t word1, word2;
 
+	/* Are we rewinding to same location? */
+	if (state->nr_rewind == state->nr) {
+		fprintf(stderr, "Trace corrupted too badly to parse\n");
+		assert(0);
+	}
+
 	if (fseek(state->fd, -8, SEEK_CUR) == -1) {
 		perror("Seek failed");
 		assert(0);
 	}
 
-	/* rewide state info */
+	/* rewind state info */
+	state->nr_rewind = state->nr--;
 	state->nr--;
 	state->stat.total_records_scanned--;
 	word1 = htm_bits(value, 0, 31);
@@ -1009,7 +1016,14 @@ static int htm_decode_one(struct htm_decode_state *state)
 
 	if (ret < 0) {
 		printf("Invalid record %d %016"PRIx64"\n", state->nr, value);
+		if (state->error_count++ > 100) {
+			printf("Trace corrupted too badly to parse\n");
+			assert(0);
+		}
+
 		return 1;
+	} else {
+		state->error_count = 0;
 	}
 
 	return 1;
