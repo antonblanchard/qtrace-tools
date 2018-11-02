@@ -98,6 +98,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	/* Are we rewinding to same location? */
 	if (state->nr_rewind == state->nr) {
 		fprintf(stderr, "Trace corrupted too badly to parse\n");
+		fprintf(stderr, "nr: %i seek:%lx\n", state->nr, ftell(state->fd));
 		assert(0);
 	}
 
@@ -1026,7 +1027,8 @@ static int htm_decode_one(struct htm_decode_state *state)
 	}
 
 	if (ret < 0) {
-		printf("Invalid record %d %016"PRIx64"\n", state->nr, value);
+		printf("Invalid record:%d offset:%li data:%016"PRIx64" \n",
+		       state->nr, ftell(state->fd), value);
 		if (state->error_count++ > 100) {
 			printf("Trace corrupted too badly to parse\n");
 			assert(0);
