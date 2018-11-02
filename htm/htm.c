@@ -775,8 +775,12 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		if (ret < 0) {
 			/* invalid record so as invalid and retry */
 			insn.info.iea = 0;
+			insn.info.ira = 0;
+			insn.info.dea = 0;
+			insn.info.dra = 0;
 			state->insn_addr += 4;
 			htm_rewind(state, value);
+			goto done;
 		} else {
 			state->insn_addr = insn.iea.address;
 			tlb_flags = insn.iea.msrir ? TLB_FLAGS_RELOC : 0;
@@ -806,7 +810,10 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		if (ret < 0) {
 			/* invalid record so as invalid and retry */
 			insn.info.ira = 0;
+			insn.info.dea = 0;
+			insn.info.dra = 0;
 			htm_rewind(state, value);
+			goto done;
 		}
 
 		if (insn.ira.page_size == 12) {
@@ -825,6 +832,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 
 		tlb_flags = insn.iea.msrir ? TLB_FLAGS_RELOC : 0;
 		tlb_pagesize = 1 << insn.ira.page_size;
+
 		tlb_ra_set(state->insn_addr, tlb_flags, insn.ira.address,
 			   tlb_pagesize);
 		state->stat.instructions_with_ira++;
@@ -846,7 +854,9 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		if (ret < 0) {
 			/* invalid record so as invalid and retry */
 			insn.info.dea = 0;
+			insn.info.dra = 0;
 			htm_rewind(state, value);
+			goto done;
 		}
 	}
 
@@ -865,6 +875,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			/* invalid record so mark so dra as invalid and retry */
 			insn.info.dra = 0;
 			htm_rewind(state, value);
+			goto done;
 		}
 
 		if (insn.info.esid) {
@@ -891,7 +902,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			state->stat.instructions_without_d_vsid++;
 		}
 	}
-
+done:
 	if (insn.info.branch && !IS_ISEL(insn.info.opcode)) {
 		ret = insn_demunge(insn.info.opcode, state->insn_addr, &state->insn);
 		if (ret < 0) {
