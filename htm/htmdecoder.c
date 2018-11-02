@@ -89,7 +89,7 @@ static void print_record_insn(struct qtrace_record *r)
 	if (r->insn_ra_valid)
 		printf(" ira:%016"PRIx64, r->insn_ra);
 	if (r->insn_page_shift_valid)
-		printf(" ira:%i", r->insn_page_shift);
+		printf(" ipgsize:%i", r->insn_page_shift);
 	if (r->data_addr_valid)
 		printf(" dea:%016"PRIx64, r->data_addr);
 	if (r->data_ra_valid)
