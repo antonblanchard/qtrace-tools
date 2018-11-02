@@ -107,7 +107,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	}
 
 	/* rewind state info */
-	state->nr_rewind = state->nr--;
+	state->nr_rewind = state->nr;
 	state->nr--;
 	state->stat.total_records_scanned--;
 	word1 = htm_bits(value, 0, 31);
