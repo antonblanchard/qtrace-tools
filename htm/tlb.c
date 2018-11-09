@@ -227,6 +227,28 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	return true;
 }
 
+/* Stupid bubble sort of tlb entries by hits */
+void tlb_sort(void)
+{
+	struct tlbe t;
+	int i, j;
+	bool swap;
+
+	for (i = 0; i < tlb.next; i++) {
+		swap = false;
+		for (j = 0; j < tlb.next - 1; j++) {
+			if (tlb.tlb[j+1].hit_count > tlb.tlb[j].hit_count ) {
+				t = tlb.tlb[j+1];
+				tlb.tlb[j+1] = tlb.tlb[j];
+				tlb.tlb[j] = t;
+				swap = true;
+			}
+		}
+		if (!swap)
+			break;
+	}
+}
+
 void tlb_allocate(void)
 {
 	int size_new;
@@ -259,6 +281,8 @@ void tlb_allocate(void)
 void tlb_dump(void)
 {
 	int i;
+
+	tlb_sort();
 
 	for (i = 0; i < tlb.next; i++) {
 		printf("TLBDUMP %02i: ", i);
