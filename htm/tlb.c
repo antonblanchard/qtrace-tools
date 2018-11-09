@@ -97,20 +97,6 @@ static inline void tlb_print(struct tlbe *t)
 	       t->ea, t->ra, t->size, t->flags, t->miss_count, t->hit_count);
 }
 
-void tlb_dump(void)
-{
-	int i;
-
-	for (i = 0; i < tlb.next; i++) {
-		printf("TLBDUMP %02i: ", i);
-		tlb_print(&tlb.tlb[i]);
-	}
-	printf("TLBDUMP no translation: %i of %i\n",
-	       tlb.no_translation, tlb.translations);
-	printf("TLBDUMP replaced translations: %i\n",
-	       tlb.translation_changes);
-}
-
 static inline bool tlb_match(uint64_t ea, uint64_t flags, struct tlbe *t)
 {
 	tlb_entry_validate(t);
@@ -268,6 +254,20 @@ void tlb_allocate(void)
 
 	tlb_validate();
 	return;
+}
+
+void tlb_dump(void)
+{
+	int i;
+
+	for (i = 0; i < tlb.next; i++) {
+		printf("TLBDUMP %02i: ", i);
+		tlb_print(&tlb.tlb[i]);
+	}
+	printf("TLBDUMP no translation: %i of %i\n",
+	       tlb.no_translation, tlb.translations);
+	printf("TLBDUMP replaced translations: %i\n",
+	       tlb.translation_changes);
 }
 
 /*
