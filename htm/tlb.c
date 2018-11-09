@@ -97,20 +97,6 @@ static inline void tlb_print(struct tlbe *t)
 	       t->ea, t->ra, t->size, t->flags, t->miss_count, t->hit_count);
 }
 
-void tlb_dump(void)
-{
-	int i;
-
-	for (i = 0; i < tlb.next; i++) {
-		printf("TLBDUMP %02i: ", i);
-		tlb_print(&tlb.tlb[i]);
-	}
-	printf("TLBDUMP no translation: %i of %i\n",
-	       tlb.no_translation, tlb.translations);
-	printf("TLBDUMP replaced translations: %i\n",
-	       tlb.translation_changes);
-}
-
 static inline bool tlb_match(uint64_t ea, uint64_t flags, struct tlbe *t)
 {
 	tlb_entry_validate(t);
@@ -241,6 +227,28 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	return true;
 }
 
+/* Stupid bubble sort of tlb entries by hits */
+void tlb_sort(void)
+{
+	struct tlbe t;
+	int i, j;
+	bool swap;
+
+	for (i = 0; i < tlb.next; i++) {
+		swap = false;
+		for (j = 0; j < tlb.next - 1; j++) {
+			if (tlb.tlb[j+1].hit_count > tlb.tlb[j].hit_count ) {
+				t = tlb.tlb[j+1];
+				tlb.tlb[j+1] = tlb.tlb[j];
+				tlb.tlb[j] = t;
+				swap = true;
+			}
+		}
+		if (!swap)
+			break;
+	}
+}
+
 void tlb_allocate(void)
 {
 	int size_new;
@@ -266,8 +274,27 @@ void tlb_allocate(void)
 	memset(t, 0, tlb.size*sizeof(struct tlbe));
 	tlb.size = size_new;
 
+	/* Since we do a linear search, sort once in a while to help with hit rate */
+	tlb_sort();
+
 	tlb_validate();
 	return;
+}
+
+void tlb_dump(void)
+{
+	int i;
+
+	tlb_sort();
+
+	for (i = 0; i < tlb.next; i++) {
+		printf("TLBDUMP %02i: ", i);
+		tlb_print(&tlb.tlb[i]);
+	}
+	printf("TLBDUMP no translation: %i of %i\n",
+	       tlb.no_translation, tlb.translations);
+	printf("TLBDUMP replaced translations: %i\n",
+	       tlb.translation_changes);
 }
 
 /*
