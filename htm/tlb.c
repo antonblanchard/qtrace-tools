@@ -274,6 +274,9 @@ void tlb_allocate(void)
 	memset(t, 0, tlb.size*sizeof(struct tlbe));
 	tlb.size = size_new;
 
+	/* Since we do a linear search, sort once in a while to help with hit rate */
+	tlb_sort();
+
 	tlb_validate();
 	return;
 }
