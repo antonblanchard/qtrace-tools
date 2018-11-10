@@ -442,6 +442,181 @@ struct call syscalls[] = {
 };
 #define NR_SYSCALLS (sizeof(syscalls) / sizeof(struct call))
 
+struct call opalcalls[] = {
+	{ "TEST" },				// 0
+	{ "CONSOLE_WRITE" },			// 1
+	{ "CONSOLE_READ" },			// 2
+	{ "RTC_READ" },				// 3
+	{ "RTC_WRITE" },			// 4
+	{ "CEC_POWER_DOWN" },			// 5
+	{ "CEC_REBOOT" },			// 6
+	{ "READ_NVRAM" },			// 7
+	{ "WRITE_NVRAM" },			// 8
+	{ "HANDLE_INTERRUPT" },			// 9
+	{ "POLL_EVENTS" },			// 10
+	{ "PCI_SET_HUB_TCE_MEMORY" },		// 11
+	{ "PCI_SET_PHB_TCE_MEMORY" },		// 12
+	{ "PCI_CONFIG_READ_BYTE" },		// 13
+	{ "PCI_CONFIG_READ_HALF_WORD" },  	// 14
+	{ "PCI_CONFIG_READ_WORD" },		// 15
+	{ "PCI_CONFIG_WRITE_BYTE" },		// 16
+	{ "PCI_CONFIG_WRITE_HALF_WORD" },	// 17
+	{ "PCI_CONFIG_WRITE_WORD" },		// 18
+	{ "SET_XIVE" },				// 19
+	{ "GET_XIVE" },				// 20
+	{ "OPAL_GET_COMPLETION_TOKEN_STATUS" },	// 21
+	{ "REGISTER_OPAL_EXCEPTION_HANDLER" },	// 22
+	{ "PCI_EEH_FREEZE_STATUS" },		// 23
+	{ "PCI_SHPC" },				// 24
+	{ "CONSOLE_WRITE_BUFFER_SPACE" },	// 25
+	{ "PCI_EEH_FREEZE_CLEAR" },		// 26
+	{ "PCI_PHB_MMIO_ENABLE" },		// 27
+	{ "PCI_SET_PHB_MEM_WINDOW" },		// 28
+	{ "PCI_MAP_PE_MMIO_WINDOW" },		// 29
+	{ "PCI_SET_PHB_TABLE_MEMORY" },		// 30
+	{ "PCI_SET_PE" },			// 31
+	{ "PCI_SET_PELTV" },			// 32
+	{ "PCI_SET_MVE" },			// 33
+	{ "PCI_SET_MVE_ENABLE" },		// 34
+	{ "PCI_GET_XIVE_REISSUE" },		// 35
+	{ "PCI_SET_XIVE_REISSUE" },		// 36
+	{ "PCI_SET_XIVE_PE" },			// 37
+	{ "GET_XIVE_SOURCE" },			// 38
+	{ "GET_MSI_32" },			// 39
+	{ "GET_MSI_64" },			// 40
+	{ "START_CPU" },			// 41
+	{ "QUERY_CPU_STATUS" },			// 42
+	{ "WRITE_OPPANEL" },			// 43
+	{ "PCI_MAP_PE_DMA_WINDOW" },		// 44
+	{ "PCI_MAP_PE_DMA_WINDOW_REAL" },	// 45
+	{ "UNKNOWN_46" },			// 46
+	{ "UNKNOWN_47" },			// 47
+	{ "UNKNOWN_48" },			// 48
+	{ "PCI_RESET" },			// 49
+	{ "PCI_GET_HUB_DIAG_DATA" },		// 50
+	{ "PCI_GET_PHB_DIAG_DATA" },		// 51
+	{ "PCI_FENCE_PHB" },			// 52
+	{ "PCI_REINIT" },			// 53
+	{ "PCI_MASK_PE_ERROR" },		// 54
+	{ "SET_SLOT_LED_STATUS" },		// 55
+	{ "GET_EPOW_STATUS" },			// 56
+	{ "SET_SYSTEM_ATTENTION_LED" },		// 57
+	{ "RESERVED1" },			// 58
+	{ "RESERVED2" },			// 59
+	{ "PCI_NEXT_ERROR" },			// 60
+	{ "PCI_EEH_FREEZE_STATUS2" },		// 61
+	{ "PCI_POLL" },				// 62
+	{ "PCI_MSI_EOI" },			// 63
+	{ "PCI_GET_PHB_DIAG_DATA2" },		// 64
+	{ "XSCOM_READ" },			// 65
+	{ "XSCOM_WRITE" },			// 66
+	{ "LPC_READ" },				// 67
+	{ "LPC_WRITE" },			// 68
+	{ "RETURN_CPU" },			// 69
+	{ "REINIT_CPUS" },			// 70
+	{ "ELOG_READ" },			// 71
+	{ "ELOG_WRITE" },			// 72
+	{ "ELOG_ACK" },				// 73
+	{ "ELOG_RESEND" },			// 74
+	{ "ELOG_SIZE" },			// 75
+	{ "FLASH_VALIDATE" },			// 76
+	{ "FLASH_MANAGE" },			// 77
+	{ "FLASH_UPDATE" },			// 78
+	{ "RESYNC_TIMEBASE" },			// 79
+	{ "CHECK_TOKEN" },			// 80
+	{ "DUMP_INIT" },			// 81
+	{ "DUMP_INFO" },			// 82
+	{ "DUMP_READ" },			// 83
+	{ "DUMP_ACK" },				// 84
+	{ "GET_MSG" },				// 85
+	{ "CHECK_ASYNC_COMPLETION" },		// 86
+	{ "SYNC_HOST_REBOOT" },			// 87
+	{ "SENSOR_READ" },			// 88
+	{ "GET_PARAM" },			// 89
+	{ "SET_PARAM" },			// 90
+	{ "DUMP_RESEND" },			// 91
+	{ "ELOG_SEND" },			// 92
+	{ "PCI_SET_PHB_CAPI_MODE" },		// 93
+	{ "DUMP_INFO2" },			// 94
+	{ "WRITE_OPPANEL_ASYNC" },		// 95
+	{ "PCI_ERR_INJECT" },			// 96
+	{ "PCI_EEH_FREEZE_SET" },		// 97
+	{ "HANDLE_HMI" },			// 98
+	{ "CONFIG_CPU_IDLE_STATE" },		// 99
+	{ "SLW_SET_REG" },			// 100
+	{ "REGISTER_DUMP_REGION" },		// 101
+	{ "UNREGISTER_DUMP_REGION" },		// 102
+	{ "WRITE_TPO" },			// 103
+	{ "READ_TPO" },				// 104
+	{ "GET_DPO_STATUS" },			// 105
+	{ "OLD_I2C_REQUEST" },			// 106
+	{ "IPMI_SEND" },			// 107
+	{ "IPMI_RECV" },			// 108
+	{ "I2C_REQUEST" },			// 109
+	{ "FLASH_READ" },			// 110
+	{ "FLASH_WRITE" },			// 111
+	{ "FLASH_ERASE" },			// 112
+	{ "PRD_MSG" },				// 113
+	{ "LEDS_GET_INDICATOR" },		// 114
+	{ "LEDS_SET_INDICATOR" },		// 115
+	{ "CEC_REBOOT2" },			// 116
+	{ "CONSOLE_FLUSH" },			// 117
+	{ "GET_DEVICE_TREE" },			// 118
+	{ "PCI_GET_PRESENCE_STATE" },		// 119
+	{ "PCI_GET_POWER_STATE" },		// 120
+	{ "PCI_SET_POWER_STATE" },		// 121
+	{ "INT_GET_XIRR" },			// 122
+	{ "INT_SET_CPPR" },			// 123
+	{ "INT_EOI" },				// 124
+	{ "INT_SET_MFRR" },			// 125
+	{ "PCI_TCE_KILL" },			// 126
+	{ "NMMU_SET_PTCR" },			// 127
+	{ "XIVE_RESET" },			// 128
+	{ "XIVE_GET_IRQ_INFO" },		// 129
+	{ "XIVE_GET_IRQ_CONFIG" },		// 130
+	{ "XIVE_SET_IRQ_CONFIG" },		// 131
+	{ "XIVE_GET_QUEUE_INFO" },		// 132
+	{ "XIVE_SET_QUEUE_INFO" },		// 133
+	{ "XIVE_DONATE_PAGE" },			// 134
+	{ "XIVE_ALLOCATE_VP_BLOCK" },		// 135
+	{ "XIVE_FREE_VP_BLOCK" },		// 136
+	{ "XIVE_GET_VP_INFO" },			// 137
+	{ "XIVE_SET_VP_INFO" },			// 138
+	{ "XIVE_ALLOCATE_IRQ" },		// 139
+	{ "XIVE_FREE_IRQ" },			// 140
+	{ "XIVE_SYNC" },			// 141
+	{ "XIVE_DUMP" },			// 142
+	{ "XIVE_RESERVED3" },			// 143
+	{ "XIVE_RESERVED4" },			// 144
+	{ "SIGNAL_SYSTEM_RESET" },		// 145
+	{ "NPU_INIT_CONTEXT" },			// 146
+	{ "NPU_DESTROY_CONTEXT" },		// 147
+	{ "NPU_MAP_LPAR" },			// 148
+	{ "IMC_COUNTERS_INIT" },		// 149
+	{ "IMC_COUNTERS_START" },		// 150
+	{ "IMC_COUNTERS_STOP" },		// 151
+	{ "GET_POWERCAP" },			// 152
+	{ "SET_POWERCAP" },			// 153
+	{ "GET_POWER_SHIFT_RATIO" },		// 154
+	{ "SET_POWER_SHIFT_RATIO" },		// 155
+	{ "SENSOR_GROUP_CLEAR" },		// 156
+	{ "PCI_SET_P2P" },			// 157
+	{ "QUIESCE" },				// 158
+	{ "NPU_SPA_SETUP" },			// 159
+	{ "NPU_SPA_CLEAR_CACHE" },		// 160
+	{ "NPU_TL_SET" },			// 161
+	{ "SENSOR_READ_U64" },			// 162
+	{ "SENSOR_GROUP_ENABLE" },		// 163
+	{ "PCI_GET_PBCQ_TUNNEL_BAR" },		// 164
+	{ "PCI_SET_PBCQ_TUNNEL_BAR" },		// 165
+	{ "HANDLE_HMI2" },			// 166
+	{ "NX_COPROC_INIT" },			// 167
+	{ "NPU_SET_RELAXED_ORDER" },		// 168
+	{ "NPU_GET_RELAXED_ORDER" },		// 169
+	{ "UNKNOWN" },				// 170}, /* this must be the last entry */
+};
+#define NR_OPALCALLS (sizeof(opalcalls) / sizeof(struct call))
+
 struct stats {
 	uint64_t total;
 	uint64_t system;
@@ -457,10 +632,14 @@ struct stats {
 	uint64_t ctxswitch_ea_multiple;
 	struct exception *exceptions;
 	struct call *syscalls;
+	struct call *opalcalls;
+	uint64_t opalcallnum;
+	bool opallast;
 };
 struct stats s = {
 	.syscalls = syscalls,
 	.exceptions = exceptions,
+	.opalcalls = opalcalls,
 };
 
 static bool is_exception_entry(unsigned long ea)
@@ -487,14 +666,16 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 {
 	uint32_t i;
 	bool system = false;
+	bool opal = false;
 
 	s.total++;
 	if (ea >= 0xc000000000000000) {
 		system = true;
 		s.system++;
-	} else if ((ea & 0xFFFFFFFFFF000000) == 0x0000000030000000)
+	} else if ((ea & 0xFFFFFFFFFF000000) == 0x0000000030000000) {
+		opal = true;
 		s.opal++;
-	else {
+	} else {
 		s.user++;
 		if (ea >= 0x700000000000)
 			s.userlib++;
@@ -517,6 +698,20 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 		s.scnum = NR_SYSCALLS - 1; /* make sure we don't count this again */
 	}
 
+
+	/*
+	 * Find start of OPAL call.  If this instruction is OPAL and
+	 * the last wasn't, then this is the start of an OPAL call.
+	 */
+	if (opal && !s.opallast) {
+		s.opalcallnum++;
+		/* check for bogus value */
+		if (s.scnum > NR_OPALCALLS)
+			s.scnum = NR_OPALCALLS - 1;
+		s.opalcalls[s.scnum].count++;
+		s.scnum = NR_SYSCALLS - 1; /* make sure we don't count this again */
+	}
+
 	/* Context switch */
 	/* mfspr r??, SPRN_EBBRR in kernel == context switch */
 	if (system && ((insn & 0xfe1fffff) == 0x7c0042a6)) {
@@ -536,6 +731,7 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 			s.idle += i;
 		s.mftb_last = s.total;
 	}
+	s.opallast = opal;
 
 }
 
@@ -595,5 +791,14 @@ void ppcstats_print(void)
 			break;
 		fprintf(stdout,"\t%16s\t%li\n",
 		       syscalls[i].name, syscalls[i].count);
+	}
+
+	fprintf(stdout,"\nOPAL Calls: %16li\n", s.opalcallnum);
+	qsort(s.opalcalls, NR_OPALCALLS, sizeof(struct call), call_compare);
+	for (i = 0; i < NR_OPALCALLS; i++) {
+		if (!opalcalls[i].count)
+			continue;
+		fprintf(stdout,"\t%32s\t%li\n",
+		       opalcalls[i].name, opalcalls[i].count);
 	}
 }
