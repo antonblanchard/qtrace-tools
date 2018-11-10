@@ -539,27 +539,9 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 
 }
 
-static void exceptions_sort(void)
+static int exceptions_compare(const void *a, const void *b)
 {
-	struct exception exc;
-	int i, j;
-	bool swap;
-
-	/* stupid bubble sort */
-	for (i = 0; i < NR_EXCEPTIONS; i++) {
-		swap = false;
-		for (j = 0; j < NR_EXCEPTIONS- 1; j++) {
-			if (s.exceptions[j+1].count > s.exceptions[j].count) {
-				swap  = true;
-				exc = s.exceptions[j+1];
-				s.exceptions[j+1] = s.exceptions[j];
-				s.exceptions[j] = exc;
-			}
-		}
-		if (!swap)
-			break;
-	}
-	assert(!swap);
+	return ((struct exception *)b)->count - ((struct exception *)a)->count;
 }
 
 static int call_compare(const void *a, const void *b)
@@ -597,7 +579,7 @@ void ppcstats_print(void)
 		fprintf(stdout,"WARNING: Context Switches fuzzy by %0.2f%%)\n", f);
 
 	fprintf(stdout,"\nExceptions:\n");
-	exceptions_sort();
+	qsort(s.exceptions, NR_EXCEPTIONS, sizeof(struct exception), exceptions_compare);
 	for (i = 0; i < NR_EXCEPTIONS; i++) {
 		if (s.exceptions[i].count) {
 			fprintf(stdout,"\t%16s\t%li\n",
