@@ -227,26 +227,9 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	return true;
 }
 
-/* Stupid bubble sort of tlb entries by hits */
-void tlb_sort(void)
+static int tlb_compare(const void *a, const void *b)
 {
-	struct tlbe t;
-	int i, j;
-	bool swap;
-
-	for (i = 0; i < tlb.next; i++) {
-		swap = false;
-		for (j = 0; j < tlb.next - 1; j++) {
-			if (tlb.tlb[j+1].hit_count > tlb.tlb[j].hit_count ) {
-				t = tlb.tlb[j+1];
-				tlb.tlb[j+1] = tlb.tlb[j];
-				tlb.tlb[j] = t;
-				swap = true;
-			}
-		}
-		if (!swap)
-			break;
-	}
+	return ((struct tlbe *)b)->hit_count - ((struct tlbe *)a)->hit_count;
 }
 
 void tlb_allocate(void)
@@ -274,8 +257,10 @@ void tlb_allocate(void)
 	memset(t, 0, tlb.size*sizeof(struct tlbe));
 	tlb.size = size_new;
 
-	/* Since we do a linear search, sort once in a while to help with hit rate */
-	tlb_sort();
+	/* Since we do a linear search, sort once in a while to help
+	 * with hit rate
+	 */
+	qsort(tlb.tlb, tlb.next, sizeof(struct tlbe), tlb_compare);
 
 	tlb_validate();
 	return;
@@ -285,7 +270,7 @@ void tlb_dump(void)
 {
 	int i;
 
-	tlb_sort();
+	qsort(tlb.tlb, tlb.next, sizeof(struct tlbe), tlb_compare);
 
 	for (i = 0; i < tlb.next; i++) {
 		printf("TLBDUMP %02i: ", i);
