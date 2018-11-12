@@ -917,6 +917,10 @@ done:
 		state->insn &= ~0xe000;
 	}
 
+	ppcstats_log_inst(state->insn_addr, state->insn);
+	if (!state->fn || !state->private_data)
+		return 0;
+
 	optype = opcode_type(state->insn);
 	if (optype == OPCODE_RFSCV ||
 	    optype == OPCODE_RFID ||
@@ -947,10 +951,6 @@ done:
 	rec.type = HTM_RECORD_INSN;
 	rec.insn.insn = state->insn;
 	rec.insn.insn_addr = state->insn_addr;
-
-	ppcstats_log_inst(state->insn_addr, state->insn);
-	if (!state->fd)
-		return 0;
 
 	if (insn.info.ira && !insn.info.esid && insn.ira.page_size > 0) {
 		rec.insn.insn_ra_valid = true;
