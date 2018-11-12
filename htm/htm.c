@@ -796,9 +796,10 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			/* Only lookup translation in the TLB if we
 			 * didn't get one in the trace
 			 */
-			if (!insn.info.ira &&
-			    tlb_ra_get(state->insn_addr, tlb_flags,
-				       &insn.ira.address, &tlb_pagesize) ){
+			if ((state->fn && state->private_data) &&
+			    (!insn.info.ira &&
+			     tlb_ra_get(state->insn_addr, tlb_flags,
+					&insn.ira.address, &tlb_pagesize))){
 				insn.info.ira = true;
 				insn.ira.page_size = pagesize_to_shift(tlb_pagesize);
 				insn.ira.esid_to_irpn = 0; // FIXME ??
@@ -813,6 +814,10 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+		if (!state->fn || !state->private_data) {
+			insn.info.ira = 0;
+			goto ira_done;
 		}
 
 		ret = htm_decode_insn_ira(state, value, &insn.ira);
@@ -848,11 +853,17 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	} else {
 		state->stat.instructions_without_ira++;
 	}
+ira_done:
 
 	if (insn.info.dea) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+
+		if (!state->fn || !state->private_data){
+			insn.info.dea = 0;
+			goto dea_done;
 		}
 
 		if (insn.info.esid) {
@@ -869,10 +880,16 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		}
 	}
 
+dea_done:
 	if (insn.info.dra == 1) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+
+		if (!state->fn || !state->private_data){
+			insn.info.dra = 0;
+			goto done;
 		}
 
 		if (insn.info.esid) {
