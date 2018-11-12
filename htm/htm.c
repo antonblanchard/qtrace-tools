@@ -984,7 +984,7 @@ done:
 		rec.insn.data_page_shift_valid = false;
 	}
 
-	if (state->fn)
+	if (state->fn && state->private_data)
 		state->fn(&rec, state->private_data);
 
 	return 0;

@@ -250,6 +250,10 @@ int main(int argc, char * const argv[])
 	if (output == NULL) {
 		ret = snprintf(path, sizeof(path), "%s.qt", input);
 	} else {
+		if (show_stats_only) {
+			fprintf(stderr, "ERROR: -s and -o options incompatible\n");
+			exit(1);
+		}
 		ret = snprintf(path, sizeof(path), "%s", output);
 	}
 	if (ret >= sizeof(path)) {
@@ -263,16 +267,19 @@ int main(int argc, char * const argv[])
 			argv[1], strerror(errno));
 		exit(1);
 	}
-	if (!qtwriter_open(&state.qt, path, 0)) {
-		fprintf(stderr, "Failed to open output file %s\n", path);
-		fclose(fd);
-		exit(1);
-	}
 
-	state.debug = debug;
-	state.detail = detail;
+	if (!show_stats_only) {
+		if (!qtwriter_open(&state.qt, path, 0)) {
+			fprintf(stderr, "Failed to open output file %s\n", path);
+			fclose(fd);
+			exit(1);
+		}
+		state.debug = debug;
+		state.detail = detail;
 
-	htm_decode(fd, print_record, &state, &stat);
+		htm_decode(fd, print_record, &state, &stat);
+	} else
+		htm_decode(fd, NULL, NULL, &stat);
 
 	if (detail || debug) {
 		print_stat(&stat);
@@ -282,7 +289,8 @@ int main(int argc, char * const argv[])
 	if (show_stats_only)
 		ppcstats_print();
 
-	qtwriter_close(&state.qt);
+	if (!show_stats_only)
+		qtwriter_close(&state.qt);
 	fclose(fd);
 
 	exit(0);
