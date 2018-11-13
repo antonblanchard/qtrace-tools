@@ -12,6 +12,8 @@
 #include <errno.h>
 #include <endian.h>
 #include <assert.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <ppcstats.h>
 
@@ -57,28 +59,11 @@ static inline bool htm_bit(uint64_t value, int bit)
 	return false;
 }
 
-static inline int htm_read(FILE *fd, uint8_t *buf, size_t len)
-{
-	size_t nread;
-
-	do {
-		nread = fread(buf, 1, len, fd);
-		if (nread == 0)
-			return 0; /* EOF */
-		if (nread == -1) {
-			fprintf(stderr, "Read failed, errno=%d\n", errno);
-			printf("Read failed, errno=%d\n", errno);
-			return -1;
-		}
-		len -= nread;
-		buf += nread;
-	} while (len);
-
-	return 1;
-}
 
 struct htm_decode_state {
-	FILE *fd;
+	int fd;
+	uint8_t *mmap_start, *mmap_end;
+	uint64_t read_offset;
 	int nr, nr_rewind, error_count;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
@@ -91,6 +76,31 @@ struct htm_decode_state {
 	uint32_t insn;
 };
 
+static inline int htm_read(struct htm_decode_state *state, uint8_t *buf,
+			   size_t len)
+{
+	uint8_t *m;
+
+	assert(len == 8);
+
+	if (!state->mmap_start) {
+		struct stat sb;
+		assert(fstat(state->fd, &sb) == 0);
+		m = mmap(NULL, sb.st_size, PROT_READ,
+			 MAP_PRIVATE | MAP_POPULATE, state->fd, 0);
+		assert(m);
+		state->mmap_start = m;
+		state->mmap_end = m + sb.st_size;
+		state->read_offset = 0;
+	}
+	m = state->mmap_start + state->read_offset;
+	if (m + len > state->mmap_end)
+		return 0;
+	*(uint64_t *)buf = *(uint64_t *)m; /* copy 8 bytes */
+	state->read_offset += len;
+	return 1;
+}
+
 static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
 	uint32_t word1, word2;
@@ -98,14 +108,12 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	/* Are we rewinding to same location? */
 	if (state->nr_rewind == state->nr) {
 		fprintf(stderr, "Trace corrupted too badly to parse\n");
-		fprintf(stderr, "nr: %i seek:%lx\n", state->nr, ftell(state->fd));
+		fprintf(stderr, "nr: %i seek:%lx\n",
+			state->nr, state->read_offset);
 		assert(0);
 	}
 
-	if (fseek(state->fd, -8, SEEK_CUR) == -1) {
-		perror("Seek failed");
-		assert(0);
-	}
+	state->read_offset -= 8;
 
 	/* rewind state info */
 	state->nr_rewind = state->nr;
@@ -126,7 +134,7 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	uint32_t word1, word2;
 	int ret;
 
-	ret = htm_read(state->fd, bytes, sizeof(bytes));
+	ret = htm_read(state, bytes, sizeof(bytes));
 	if (ret <= 0) {
 		return -1;
 	}
@@ -1028,7 +1036,7 @@ static int htm_decode_one(struct htm_decode_state *state)
 
 	if (ret < 0) {
 		printf("Invalid record:%d offset:%li data:%016"PRIx64" \n",
-		       state->nr, ftell(state->fd), value);
+		       state->nr, state->read_offset, value);
 		if (state->error_count++ > 100) {
 			printf("Trace corrupted too badly to parse\n");
 			assert(0);
@@ -1047,7 +1055,7 @@ static int htm_decode_one(struct htm_decode_state *state)
  *  -1 : error
  *   0 : success
  */
-int htm_decode(FILE *fd, htm_record_fn_t fn, void *private_data,
+int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 	       struct htm_decode_stat *result)
 {
 	int ret;
