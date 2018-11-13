@@ -301,6 +301,7 @@ struct htm_insn_info {
 	bool dra;
 	bool esid;
 	unsigned int flags;
+	bool software_tlb;
 };
 
 struct htm_insn_iea {
@@ -757,7 +758,6 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	uint64_t tlb_flags, tlb_pagesize;
 	int optype;
 	int ret;
-	bool software_tlb;
 
 	state->stat.total_records_processed++;
 	state->stat.total_instruction_scanned++;
@@ -773,7 +773,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		goto fail;
 	}
 
-	software_tlb = false;
+	insn.info.software_tlb = false;
 	if (insn.info.iea) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
@@ -802,14 +802,14 @@ static int htm_decode_insn(struct htm_decode_state *state,
 				insn.info.ira = true;
 				insn.ira.page_size = pagesize_to_shift(tlb_pagesize);
 				insn.ira.esid_to_irpn = 0; // FIXME ??
-				software_tlb = true;
+				insn.info.software_tlb = true;
 			}
 		}
 	} else {
 		state->insn_addr += 4;
 	}
 
-	if (insn.info.ira & !software_tlb) {
+	if (insn.info.ira & !insn.info.software_tlb) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
