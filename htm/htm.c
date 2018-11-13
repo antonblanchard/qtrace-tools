@@ -12,6 +12,8 @@
 #include <errno.h>
 #include <endian.h>
 #include <assert.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <ppcstats.h>
 
@@ -57,28 +59,11 @@ static inline bool htm_bit(uint64_t value, int bit)
 	return false;
 }
 
-static inline int htm_read(FILE *fd, uint8_t *buf, size_t len)
-{
-	size_t nread;
-
-	do {
-		nread = fread(buf, 1, len, fd);
-		if (nread == 0)
-			return 0; /* EOF */
-		if (nread == -1) {
-			fprintf(stderr, "Read failed, errno=%d\n", errno);
-			printf("Read failed, errno=%d\n", errno);
-			return -1;
-		}
-		len -= nread;
-		buf += nread;
-	} while (len);
-
-	return 1;
-}
 
 struct htm_decode_state {
-	FILE *fd;
+	int fd;
+	uint8_t *mmap_start, *mmap_end;
+	uint64_t read_offset;
 	int nr, nr_rewind, error_count;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
@@ -91,6 +76,31 @@ struct htm_decode_state {
 	uint32_t insn;
 };
 
+static inline int htm_read(struct htm_decode_state *state, uint8_t *buf,
+			   size_t len)
+{
+	uint8_t *m;
+
+	assert(len == 8);
+
+	if (!state->mmap_start) {
+		struct stat sb;
+		assert(fstat(state->fd, &sb) == 0);
+		m = mmap(NULL, sb.st_size, PROT_READ,
+			 MAP_PRIVATE | MAP_POPULATE, state->fd, 0);
+		assert(m);
+		state->mmap_start = m;
+		state->mmap_end = m + sb.st_size;
+		state->read_offset = 0;
+	}
+	m = state->mmap_start + state->read_offset;
+	if (m + len > state->mmap_end)
+		return 0;
+	*(uint64_t *)buf = *(uint64_t *)m; /* copy 8 bytes */
+	state->read_offset += len;
+	return 1;
+}
+
 static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 {
 	uint32_t word1, word2;
@@ -98,14 +108,12 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	/* Are we rewinding to same location? */
 	if (state->nr_rewind == state->nr) {
 		fprintf(stderr, "Trace corrupted too badly to parse\n");
-		fprintf(stderr, "nr: %i seek:%lx\n", state->nr, ftell(state->fd));
+		fprintf(stderr, "nr: %i seek:%lx\n",
+			state->nr, state->read_offset);
 		assert(0);
 	}
 
-	if (fseek(state->fd, -8, SEEK_CUR) == -1) {
-		perror("Seek failed");
-		assert(0);
-	}
+	state->read_offset -= 8;
 
 	/* rewind state info */
 	state->nr_rewind = state->nr;
@@ -126,7 +134,7 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	uint32_t word1, word2;
 	int ret;
 
-	ret = htm_read(state->fd, bytes, sizeof(bytes));
+	ret = htm_read(state, bytes, sizeof(bytes));
 	if (ret <= 0) {
 		return -1;
 	}
@@ -293,6 +301,7 @@ struct htm_insn_info {
 	bool dra;
 	bool esid;
 	unsigned int flags;
+	bool software_tlb;
 };
 
 struct htm_insn_iea {
@@ -749,7 +758,6 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	uint64_t tlb_flags, tlb_pagesize;
 	int optype;
 	int ret;
-	bool software_tlb;
 
 	state->stat.total_records_processed++;
 	state->stat.total_instruction_scanned++;
@@ -765,7 +773,7 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		goto fail;
 	}
 
-	software_tlb = false;
+	insn.info.software_tlb = false;
 	if (insn.info.iea) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
@@ -788,23 +796,28 @@ static int htm_decode_insn(struct htm_decode_state *state,
 			/* Only lookup translation in the TLB if we
 			 * didn't get one in the trace
 			 */
-			if (!insn.info.ira &&
-			    tlb_ra_get(state->insn_addr, tlb_flags,
-				       &insn.ira.address, &tlb_pagesize) ){
+			if ((state->fn && state->private_data) &&
+			    (!insn.info.ira &&
+			     tlb_ra_get(state->insn_addr, tlb_flags,
+					&insn.ira.address, &tlb_pagesize))){
 				insn.info.ira = true;
 				insn.ira.page_size = pagesize_to_shift(tlb_pagesize);
 				insn.ira.esid_to_irpn = 0; // FIXME ??
-				software_tlb = true;
+				insn.info.software_tlb = true;
 			}
 		}
 	} else {
 		state->insn_addr += 4;
 	}
 
-	if (insn.info.ira & !software_tlb) {
+	if (insn.info.ira & !insn.info.software_tlb) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+		if (!state->fn || !state->private_data) {
+			insn.info.ira = 0;
+			goto ira_done;
 		}
 
 		ret = htm_decode_insn_ira(state, value, &insn.ira);
@@ -840,11 +853,17 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	} else {
 		state->stat.instructions_without_ira++;
 	}
+ira_done:
 
 	if (insn.info.dea) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+
+		if (!state->fn || !state->private_data){
+			insn.info.dea = 0;
+			goto dea_done;
 		}
 
 		if (insn.info.esid) {
@@ -861,10 +880,16 @@ static int htm_decode_insn(struct htm_decode_state *state,
 		}
 	}
 
+dea_done:
 	if (insn.info.dra == 1) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			goto fail;
+		}
+
+		if (!state->fn || !state->private_data){
+			insn.info.dra = 0;
+			goto done;
 		}
 
 		if (insn.info.esid) {
@@ -917,6 +942,10 @@ done:
 		state->insn &= ~0xe000;
 	}
 
+	ppcstats_log_inst(state->insn_addr, state->insn);
+	if (!state->fn || !state->private_data)
+		return 0;
+
 	optype = opcode_type(state->insn);
 	if (optype == OPCODE_RFSCV ||
 	    optype == OPCODE_RFID ||
@@ -947,10 +976,6 @@ done:
 	rec.type = HTM_RECORD_INSN;
 	rec.insn.insn = state->insn;
 	rec.insn.insn_addr = state->insn_addr;
-
-	ppcstats_log_inst(state->insn_addr, state->insn);
-	if (!state->fd)
-		return 0;
 
 	if (insn.info.ira && !insn.info.esid && insn.ira.page_size > 0) {
 		rec.insn.insn_ra_valid = true;
@@ -984,7 +1009,7 @@ done:
 		rec.insn.data_page_shift_valid = false;
 	}
 
-	if (state->fn)
+	if (state->fn && state->private_data)
 		state->fn(&rec, state->private_data);
 
 	return 0;
@@ -1028,7 +1053,7 @@ static int htm_decode_one(struct htm_decode_state *state)
 
 	if (ret < 0) {
 		printf("Invalid record:%d offset:%li data:%016"PRIx64" \n",
-		       state->nr, ftell(state->fd), value);
+		       state->nr, state->read_offset, value);
 		if (state->error_count++ > 100) {
 			printf("Trace corrupted too badly to parse\n");
 			assert(0);
@@ -1047,7 +1072,7 @@ static int htm_decode_one(struct htm_decode_state *state)
  *  -1 : error
  *   0 : success
  */
-int htm_decode(FILE *fd, htm_record_fn_t fn, void *private_data,
+int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 	       struct htm_decode_stat *result)
 {
 	int ret;
