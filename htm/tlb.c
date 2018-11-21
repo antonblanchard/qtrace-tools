@@ -93,41 +93,50 @@ static inline void tlb_print(struct tlbe *t)
 	       t->ea, t->ra, t->size, t->miss_count, t->hit_count);
 }
 
-static inline bool tlb_match(uint64_t ea, struct tlbe *t)
+static int tlb_compare(uint64_t ea, struct tlbe *t)
 {
 	tlb_entry_validate(t);
 
-	if (tlb_debug > 0) {
-		printf("%s ea:%016"PRIx64" ", __func__, ea);
-		tlb_print(t);
-	}
-
 	if (ea < t->ea)
-		return false;
-	if (ea >= (t->ea + t->size))
-		return false;
-
-	return true;
+		return -1;
+	else if (ea > (t->ea + t->size - 1))
+		return 1;
+	else
+		return 0;
 }
-
 
 static inline int __tlb_get_index(uint64_t ea, int start)
 {
 	struct tlbe *t;
-	int i;
+	int first, middle, last;
+	int ret;
 
-	/* FIXME: linear search... *barf* */
-	for (i = start; i < tlb.next; i++) {
-		t = &tlb.tlb[i];
-		if (tlb_match(ea, t)) {
+	first = start;
+	last = tlb.next - 1;
+
+	while (first <= last) {
+		middle = (first + last) / 2;
+		t = &tlb.tlb[middle];
+
+		ret = tlb_compare(ea, t);
+		if (ret < 0) {
+			if (first == last)
+				break;
+			last = middle - 1;
+		} else if (ret > 0) {
+			if (first == last)
+				break;
+			first = middle + 1;
+		} else {
 			tlb_entry_validate(t);
 			/* This hit in the hardware hence we had to do
 			 * the translation
 			 */
 			t->hit_count++;
-			return i;
+			return middle;
 		}
 	}
+
 	return -1;
 }
 
@@ -225,9 +234,18 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	return true;
 }
 
-static int tlb_compare(const void *a, const void *b)
+static int tlb_compare_ea(const void *a, const void *b)
 {
-	return ((struct tlbe *)b)->hit_count - ((struct tlbe *)a)->hit_count;
+
+	struct tlbe *tlbe_a = (struct tlbe *)a;
+	struct tlbe *tlbe_b = (struct tlbe *)b;
+
+	if (tlbe_a->ea < tlbe_b->ea)
+		return -1;
+	else if (tlbe_a->ea > tlbe_b->ea)
+		return 1;
+	else
+		return 0;
 }
 
 void tlb_allocate(void)
@@ -255,11 +273,6 @@ void tlb_allocate(void)
 	memset(t, 0, tlb.size*sizeof(struct tlbe));
 	tlb.size = size_new;
 
-	/* Since we do a linear search, sort once in a while to help
-	 * with hit rate
-	 */
-	qsort(tlb.tlb, tlb.next, sizeof(struct tlbe), tlb_compare);
-
 	tlb_validate();
 	return;
 }
@@ -267,8 +280,6 @@ void tlb_allocate(void)
 void tlb_dump(void)
 {
 	int i;
-
-	qsort(tlb.tlb, tlb.next, sizeof(struct tlbe), tlb_compare);
 
 	for (i = 0; i < tlb.next; i++) {
 		printf("TLBDUMP %02i: ", i);
@@ -334,6 +345,8 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 
 	/* Set entry */
 	memcpy(t, &tnew, sizeof(tnew));
+
+	qsort(tlb.tlb, tlb.next, sizeof(struct tlbe), tlb_compare_ea);
 
 	/* Check if we've screwed something up  */
 	tlb_validate();
