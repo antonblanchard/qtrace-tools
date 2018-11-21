@@ -24,7 +24,6 @@ struct tlbe {
 	uint64_t ea;
 	uint64_t ra;
 	uint64_t size;
-	uint64_t flags;
 	uint64_t hit_count;
 	uint64_t miss_count;
 	bool valid;
@@ -69,8 +68,6 @@ static bool tlb_equal(struct tlbe *t1, struct tlbe *t2)
 		return false;
 	if (t1->size != t2->size)
 		return false;
-	if (t1->flags != t2->flags)
-		return false;
 	if (t1->valid != t2->valid)
 		return false;
 	/* Don't check count */
@@ -84,7 +81,6 @@ static inline void tlb_entry_validate(struct tlbe *t)
 
 	assert(t->valid);
 	tlb_pagesize_validate(t->size);
-	tlb_flags_validate(t->flags);
 	mask = tlb_mask_offset(t);
 	assert((t->ea & mask) == 0);
 	assert((t->ra & mask) == 0);
@@ -93,17 +89,16 @@ static inline void tlb_entry_validate(struct tlbe *t)
 static inline void tlb_print(struct tlbe *t)
 {
 	printf("ea:%016"PRIx64" ra:%016"PRIx64" size:%08"PRIx64" "
-	       "flags:%"PRIx64" miss:%"PRIi64" hit:%"PRIi64"\n",
-	       t->ea, t->ra, t->size, t->flags, t->miss_count, t->hit_count);
+	       "miss:%"PRIi64" hit:%"PRIi64"\n",
+	       t->ea, t->ra, t->size, t->miss_count, t->hit_count);
 }
 
-static inline bool tlb_match(uint64_t ea, uint64_t flags, struct tlbe *t)
+static inline bool tlb_match(uint64_t ea, struct tlbe *t)
 {
 	tlb_entry_validate(t);
 
 	if (tlb_debug > 0) {
-		printf("%s ea:%016"PRIx64" flags:%"PRIx64" ",
-		       __func__, ea, flags);
+		printf("%s ea:%016"PRIx64" ", __func__, ea);
 		tlb_print(t);
 	}
 
@@ -111,14 +106,12 @@ static inline bool tlb_match(uint64_t ea, uint64_t flags, struct tlbe *t)
 		return false;
 	if (ea >= (t->ea + t->size))
 		return false;
-	if (flags != t->flags)
-		return false;
 
 	return true;
 }
 
 
-static inline int __tlb_get_index(uint64_t ea, uint64_t flags, int start)
+static inline int __tlb_get_index(uint64_t ea, int start)
 {
 	struct tlbe *t;
 	int i;
@@ -126,7 +119,7 @@ static inline int __tlb_get_index(uint64_t ea, uint64_t flags, int start)
 	/* FIXME: linear search... *barf* */
 	for (i = start; i < tlb.next; i++) {
 		t = &tlb.tlb[i];
-		if (tlb_match(ea, flags, t)) {
+		if (tlb_match(ea, t)) {
 			tlb_entry_validate(t);
 			/* This hit in the hardware hence we had to do
 			 * the translation
@@ -138,9 +131,9 @@ static inline int __tlb_get_index(uint64_t ea, uint64_t flags, int start)
 	return -1;
 }
 
-static inline int tlb_get_index(uint64_t ea, uint64_t flags)
+static inline int tlb_get_index(uint64_t ea)
 {
-	return __tlb_get_index(ea, flags, 0);
+	return __tlb_get_index(ea, 0);
 }
 
 static inline void tlb_validate(void)
@@ -156,10 +149,9 @@ static inline void tlb_validate(void)
 		t = &tlb.tlb[i];
 		/* Check this ea doesn't match other entries */
 		/* Check start of page */
-		assert(__tlb_get_index(t->ea, t->flags, i + 1) == -1);
+		assert(__tlb_get_index(t->ea, i + 1) == -1);
 		/* Check end page */
-		assert(__tlb_get_index(t->ea + t->size - 1, t->flags, i + 1)
-		       == -1);
+		assert(__tlb_get_index(t->ea + t->size - 1, i + 1) == -1);
 	}
 
 	/* Check for holes */
@@ -209,9 +201,15 @@ bool tlb_ra_get(uint64_t ea, uint64_t flags,
 	assert(ra);
 	assert(pagesize);
 
+	if ((flags & TLB_FLAGS_RELOC) == 0) {
+		*ra = ea & 0x3fffffffffffffff;
+		*pagesize = 0x1000;
+		return true;
+	}
+
 	tlb.translations++;
 	/* Find entry */
-	index = tlb_get_index(ea, flags);
+	index = tlb_get_index(ea);
 	if (index < 0) {
 		tlb.no_translation++;
 		return false;
@@ -295,10 +293,13 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 
 //	tlb_debug = 1;
 
+	if ((flags & TLB_FLAGS_RELOC) == 0)
+		return;
+
 	tlb_pagesize_validate(pagesize);
 	tlb_flags_validate(flags);
 
-	index = tlb_get_index(ea, flags);
+	index = tlb_get_index(ea);
 	if (index < 0) {
 		/* No entry found, so put it at the end */
 		index = tlb.next;
@@ -315,7 +316,6 @@ void tlb_ra_set(uint64_t ea, uint64_t flags,
 	tnew.size = pagesize;
 	tnew.ea = ea & tlb_mask_rpn(&tnew);
 	tnew.ra = ra & tlb_mask_rpn(&tnew);
-	tnew.flags = flags;
 	tnew.valid = true;
 
 	if (tlb_equal(&tnew, t)) {
