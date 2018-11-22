@@ -19,6 +19,7 @@
 
 #include "htm.h"
 #include "tlb.h"
+#include "bb.h"
 
 #define HTM_STAMP_RECORD	0xACEFF0
 #define HTM_STAMP_COMPLETE	0xACEFF1
@@ -809,6 +810,8 @@ static int htm_decode_insn(struct htm_decode_state *state,
 	} else {
 		state->insn_addr += 4;
 	}
+	// FIXME: skip if stats only
+	bb_ea_log(state->insn_addr);
 
 	if (insn.info.ira & !insn.info.software_tlb) {
 		ret = htm_decode_fetch(state, &value);
@@ -1084,6 +1087,7 @@ int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 	};
 
 	tlb_init();
+	bb_init();
 
 	do {
 		ret = htm_decode_one(&state);
