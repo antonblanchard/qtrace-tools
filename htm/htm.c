@@ -127,27 +127,27 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 
 static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 {
+	uint64_t v;
 	union {
 		uint8_t bytes[8];
 		uint64_t value;
-	} t;
-	uint8_t bytes[8];
+	} i;
 	uint32_t word1, word2;
 	int ret;
 
-	ret = htm_read(state, bytes, sizeof(bytes));
+	ret = htm_read(state, i.bytes, sizeof(i.bytes));
 	if (ret <= 0) {
 		return -1;
 	}
 
-	t.value = be64toh( *(uint64_t *)bytes );
+	v = be64toh(i.value);
 
 	assert(value);
 
-	*value = t.value;
+	*value = v;
 
-	word1 = htm_bits(t.value, 0, 31);
-	word2 = htm_bits(t.value, 32, 63);
+	word1 = htm_bits(v, 0, 31);
+	word2 = htm_bits(v, 32, 63);
 
 	state->nr++;
 	state->stat.total_records_scanned++;
