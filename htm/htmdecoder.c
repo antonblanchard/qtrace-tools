@@ -22,8 +22,7 @@
 #include <ppcstats.h>
 #include "htm.h"
 #include "tlb.h"
-
-bool show_stats_only;
+#include "bb.h"
 
 static void print_record_record(struct htm_record_record *r)
 {
@@ -199,7 +198,7 @@ static void print_stat(struct htm_decode_stat *stat)
 
 static void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-d] [-o <outfile.qt>] <htmdump>\n", prog);
+	fprintf(stderr, "Usage: %s [-dsb] [-o <outfile.qt>] <htmdump>\n", prog);
 }
 
 int main(int argc, char * const argv[])
@@ -212,10 +211,10 @@ int main(int argc, char * const argv[])
 	int opt, ret, fd;
 	bool debug = false;
 	bool detail = false;
+	bool show_stats_only = false;
+	bool basic_block_only = false;
 
-	show_stats_only = false;
-
-	while ((opt = getopt(argc, argv, "Ddo:s")) != -1) {
+	while ((opt = getopt(argc, argv, "Ddo:sb")) != -1) {
 		switch (opt) {
 			case 'D':
 				debug = true;
@@ -233,6 +232,9 @@ int main(int argc, char * const argv[])
 			case 's':
 				show_stats_only = true;
 				break;
+			case 'b':
+				basic_block_only = true;
+				break;
 
 			default: /* '?' */
 				usage(argv[0]);
@@ -249,8 +251,8 @@ int main(int argc, char * const argv[])
 	if (output == NULL) {
 		ret = snprintf(path, sizeof(path), "%s.qt", input);
 	} else {
-		if (show_stats_only) {
-			fprintf(stderr, "ERROR: -s and -o options incompatible\n");
+		if (show_stats_only || basic_block_only) {
+			fprintf(stderr, "ERROR: -s/-b and -o options incompatible\n");
 			exit(1);
 		}
 		ret = snprintf(path, sizeof(path), "%s", output);
@@ -267,7 +269,7 @@ int main(int argc, char * const argv[])
 		exit(1);
 	}
 
-	if (!show_stats_only) {
+	if (!show_stats_only && !basic_block_only) {
 		if (!qtwriter_open(&state.qt, path, 0)) {
 			fprintf(stderr, "Failed to open output file %s\n", path);
 			close(fd);
@@ -288,7 +290,10 @@ int main(int argc, char * const argv[])
 	if (show_stats_only)
 		ppcstats_print();
 
-	if (!show_stats_only)
+	if (basic_block_only)
+		bb_dump();
+
+	if (!show_stats_only && !basic_block_only)
 		qtwriter_close(&state.qt);
 	close(fd);
 
