@@ -624,6 +624,7 @@ struct stats {
 	uint64_t user;
 	uint64_t userlib;
 	uint64_t userbin;
+	uint64_t r3;
 	uint64_t scnum;
 	uint64_t idle;
 	uint64_t mftb_last;
@@ -685,11 +686,17 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 
 	is_exception_entry(ea);
 
-	/* Find syscalls */
-	/* li r0, ??*/
-	if ((insn & 0xffff0000) == 0x38000000) {
+	/* Find syscalls: syscall() case */
+	/*   li r3, ?? */
+	if ((insn & 0xffff0000) == 0x38600000)
+		s.r3 = insn & 0x0000ffff;
+	/*   mr r0, r3 */
+	if (insn == 0x7c601b78)
+		s.scnum = s.r3;
+
+	/* Find syscalls:  Most common case li r0, ?? */
+	if ((insn & 0xffff0000) == 0x38000000)
 		s.scnum = insn & 0x0000ffff;
-	}
 	if (insn == 0x44000002) { /* sc */
 		/* check for bogus value */
 		if (s.scnum > NR_SYSCALLS)
