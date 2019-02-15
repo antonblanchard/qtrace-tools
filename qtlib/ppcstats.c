@@ -756,7 +756,7 @@ void ppcstats_print(void)
 	fprintf(stdout,"    %-14s%8li\t%6.2f%% of Total\n", "System",
 		s.system, 100.0*s.system/s.total);
 	fprintf(stdout,"      %-12s%8li\t%6.2f%% of System\n", "Idle",
-		s.idle, 100.0*s.idle/s.system);
+		s.idle, s.system?100.0*s.idle/s.system:0);
 
 	fprintf(stdout,"    %-14s%8li\t%6.2f%% of Total\n", "OPAL",
 		s.opal, 100.0*s.opal/s.total);
@@ -764,9 +764,9 @@ void ppcstats_print(void)
 		s.user, 100.0*s.user/s.total);
 
 	fprintf(stdout,"      %-12s%8li\t%6.2f%% of User\n", "Bin",
-		s.userbin, 100.0*s.userbin/s.user);
+		s.userbin, s.user?100.0*s.userbin/s.user:0);
 	fprintf(stdout,"      %-12s%8li\t%6.2f%% of User\n", "Lib",
-		s.userlib, 100.0*s.userlib/s.user);
+		s.userlib, s.user?100.0*s.userlib/s.user:0);
 
 
 	fprintf(stdout,"\nContext Switches %16li\n", s.ctxswitch);
