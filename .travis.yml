@@ -1,0 +1,13 @@
+language: c
+cache: ccache
+os:
+  - linux
+  - linux-ppc64le
+addons:
+  apt:
+    packages:
+      - binutils-multiarch-dev
+script:
+  - ./bootstrap.sh
+  - ./configure
+  make -j$(nproc)
