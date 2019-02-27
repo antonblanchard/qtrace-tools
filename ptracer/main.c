@@ -285,7 +285,6 @@ static void print_insn(pid_t pid, uint32_t *pc)
 
 		qtr.branch = is_branch(insn);
 		qtr.conditional_branch = is_conditional_branch(insn);
-		qtr.conditional_branch = true;
 
 		if (qtwriter_write_record(&qtwr, &qtr) == false) {
 			fprintf(stderr, "qtwriter_write_record failed\n");
