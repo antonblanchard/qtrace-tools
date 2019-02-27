@@ -8,10 +8,12 @@
  */
 
 #include <stdint.h>
+#include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/ptrace.h>
@@ -168,6 +170,29 @@ static bool remove_breakpoints(pid_t pid, struct breakpoint *breakpoints,
 
 typedef void (*callback)(pid_t pid, uint32_t *pc);
 
+static struct sigaction old_sigaction[NSIG];
+
+static void ignore_signals(void)
+{
+	struct sigaction action;
+
+	memset(&action, 0, sizeof(action));
+	action.sa_handler = SIG_IGN;
+
+	for (unsigned long i = 0; i < NSIG; i++) {
+		if (i != SIGTRAP)
+			sigaction(i, &action, &old_sigaction[i]);
+	}
+}
+
+static void dont_ignore_signals(void)
+{
+	for (unsigned long i = 0; i < NSIG; i++) {
+		if (i != SIGTRAP)
+			sigaction(i, &old_sigaction[i], NULL);
+	}
+}
+
 unsigned long step_over_atomic(pid_t pid, uint32_t *p, callback fn)
 {
 	struct breakpoint breakpoints[MAX_BREAKPOINTS];
@@ -230,30 +255,32 @@ unsigned long step_over_atomic(pid_t pid, uint32_t *p, callback fn)
 		}
 	}
 
+	ignore_signals();
 	insert_breakpoints(pid, breakpoints, b);
 
 	if (ptrace(PTRACE_CONT, pid, 0, 0) == -1) {
 		perror("step_over_atomic: ptrace(PTRACE_CONT)");
-		exit(1);
+		goto error;
 	}
 
 	if (waitpid(pid, &status, __WALL) == -1) {
 		perror("step_over_atomic: waitpid");
-		exit(1);
+		goto error;
 	}
 
 	if (!WIFSTOPPED(status)) {
 		fprintf(stderr, "%s: waitpid status 0x%x\n", __func__, status);
-		exit(1);
+		goto error;
 	}
 
 	/* XXX FIXME: We got a signal inside a larx/stcx sequence */
 	if (WSTOPSIG(status) != SIGILL) {
 		fprintf(stderr, "%s: received %d signal\n", __func__, WSTOPSIG(status));
-		exit(1);
+		goto error;
 	}
 
 	remove_breakpoints(pid, breakpoints, b);
+	dont_ignore_signals();
 
 	pc = read_pc(pid);
 
@@ -273,4 +300,9 @@ unsigned long step_over_atomic(pid_t pid, uint32_t *p, callback fn)
 	/* We return with the tracing thread running */
 
 	return start - pc;
+
+error:
+	remove_breakpoints(pid, breakpoints, b);
+	dont_ignore_signals();
+	exit(1);
 }
