@@ -229,7 +229,7 @@ void disasm(unsigned long ea, unsigned int *buf, unsigned long bufsize)
 		disassembler_p = print_insn_big_powerpc;
 #endif
 
-		init_disassemble_info(&info, stdout, (fprintf_ftype)fprintf);
+		init_disassemble_info(&info, ascii_fout, (fprintf_ftype)fprintf);
 		info.disassembler_options = "power9";
 		info.print_address_func = print_address;
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
