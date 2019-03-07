@@ -21,7 +21,7 @@ struct exception {
 };
 struct exception exceptions[] = {
 	/* Order roughly by likelyhood */
-	{ 0xc00, "System Call"},
+	{ 0xc00, "System Call/HCALL"},
 	{ 0x300, "Data Storage"},
 	{ 0x900, "Decrementer"},
 	{ 0x400, "Instruction Storage"},
@@ -617,6 +617,163 @@ struct call opalcalls[] = {
 };
 #define NR_OPALCALLS (sizeof(opalcalls) / sizeof(struct call))
 
+/* Hcalls are sparsely numbered so include the token */
+struct hcall {
+	char *name;
+	uint64_t token;
+	uint64_t count;
+};
+struct hcall hcalls[] = {
+	{ "H_UNUSED",			0 },
+	{ "H_REMOVE",			0x04 },
+	{ "H_ENTER", 			0x08 },
+	{ "H_READ", 			0x0c },
+	{ "H_CLEAR_MOD", 		0x10 },
+	{ "H_CLEAR_REF", 		0x14 },
+	{ "H_PROTECT",			0x18 },
+	{ "H_GET_TCE",			0x1c },
+	{ "H_PUT_TCE",			0x20 },
+	{ "H_SET_SPRG0", 		0x24 },
+	{ "H_SET_DABR", 		0x28 },
+	{ "H_PAGE_INIT", 		0x2c },
+	{ "H_SET_ASR",			0x30 },
+	{ "H_ASR_ON",			0x34 },
+	{ "H_ASR_OFF",			0x38 },
+	{ "H_LOGICAL_CI_LOAD",		0x3c },
+	{ "H_LOGICAL_CI_STORE", 	0x40 },
+	{ "H_LOGICAL_CACHE_LOAD", 	0x44 },
+	{ "H_LOGICAL_CACHE_STORE", 	0x48 },
+	{ "H_LOGICAL_ICBI", 		0x4c },
+	{ "H_LOGICAL_DCBF", 		0x50 },
+	{ "H_GET_TERM_CHAR", 		0x54 },
+	{ "H_PUT_TERM_CHAR", 		0x58 },
+	{ "H_REAL_TO_LOGICAL",		0x5c },
+	{ "H_HYPERVISOR_DATA",		0x60 },
+	{ "H_EOI", 			0x64 },
+	{ "H_CPPR", 			0x68 },
+	{ "H_IPI", 			0x6c },
+	{ "H_IPOLL", 			0x70 },
+	{ "H_XIRR", 			0x74 },
+	{ "H_PERFMON",			0x7c },
+	{ "H_MIGRATE_DMA", 		0x78 },
+	{ "H_REGISTER_VPA", 		0xDC },
+	{ "H_CEDE", 			0xE0 },
+	{ "H_CONFER",			0xE4 },
+	{ "H_PROD", 			0xE8 },
+	{ "H_GET_PPP",			0xEC },
+	{ "H_SET_PPP",			0xF0 },
+	{ "H_PURR", 			0xF4 },
+	{ "H_PIC", 			0xF8 },
+	{ "H_REG_CRQ",			0xFC },
+	{ "H_FREE_CRQ", 		0x100 },
+	{ "H_VIO_SIGNAL", 		0x104 },
+	{ "H_SEND_CRQ", 		0x108 },
+	{ "H_COPY_RDMA", 		0x110 },
+	{ "H_REGISTER_LOGICAL_LAN", 	0x114 },
+	{ "H_FREE_LOGICAL_LAN", 	0x118 },
+	{ "H_ADD_LOGICAL_LAN_BUFFER",   0x11C },
+	{ "H_SEND_LOGICAL_LAN", 	0x120 },
+	{ "H_BULK_REMOVE", 		0x124 },
+	{ "H_MULTICAST_CTRL",		0x130 },
+	{ "H_SET_XDABR", 		0x134 },
+	{ "H_STUFF_TCE", 		0x138 },
+	{ "H_PUT_TCE_INDIRECT", 	0x13C },
+	{ "H_CHANGE_LOGICAL_LAN_MAC",   0x14C },
+	{ "H_VTERM_PARTNER_INFO", 	0x150 },
+	{ "H_REGISTER_VTERM",		0x154 },
+	{ "H_FREE_VTERM", 		0x158 },
+	{ "H_RESET_EVENTS",		0x15C },
+	{ "H_ALLOC_RESOURCE",		0x160 },
+	{ "H_FREE_RESOURCE",		0x164 },
+	{ "H_MODIFY_QP",		0x168 },
+	{ "H_QUERY_QP",			0x16C },
+	{ "H_REREGISTER_PMR",		0x170 },
+	{ "H_REGISTER_SMR",		0x174 },
+	{ "H_QUERY_MR",			0x178 },
+	{ "H_QUERY_MW",			0x17C },
+	{ "H_QUERY_HCA",		0x180 },
+	{ "H_QUERY_PORT",		0x184 },
+	{ "H_MODIFY_PORT",		0x188 },
+	{ "H_DEFINE_AQP1",		0x18C },
+	{ "H_GET_TRACE_BUFFER",		0x190 },
+	{ "H_DEFINE_AQP0",		0x194 },
+	{ "H_RESIZE_MR",		0x198 },
+	{ "H_ATTACH_MCQP",		0x19C },
+	{ "H_DETACH_MCQP",		0x1A0 },
+	{ "H_CREATE_RPT",		0x1A4 },
+	{ "H_REMOVE_RPT",		0x1A8 },
+	{ "H_REGISTER_RPAGES",		0x1AC },
+	{ "H_DISABLE_AND_GETC",		0x1B0 },
+	{ "H_ERROR_DATA",		0x1B4 },
+	{ "H_GET_HCA_INFO",		0x1B8 },
+	{ "H_GET_PERF_COUNT",		0x1BC },
+	{ "H_MANAGE_TRACE",		0x1C0 },
+	{ "H_GET_CPU_CHARACTERISTICS",  0x1C8 },
+	{ "H_FREE_LOGICAL_LAN_BUFFER",  0x1D4 },
+	{ "H_QUERY_INT_STATE",		0x1E4 },
+	{ "H_POLL_PENDING", 		0x1D8 },
+	{ "H_ILLAN_ATTRIBUTES", 	0x244 },
+	{ "H_MODIFY_HEA_QP", 		0x250 },
+	{ "H_QUERY_HEA_QP", 		0x254 },
+	{ "H_QUERY_HEA", 		0x258 },
+	{ "H_QUERY_HEA_PORT",		0x25C },
+	{ "H_MODIFY_HEA_PORT",		0x260 },
+	{ "H_REG_BCMC", 		0x264 },
+	{ "H_DEREG_BCMC", 		0x268 },
+	{ "H_REGISTER_HEA_RPAGES", 	0x26C },
+	{ "H_DISABLE_AND_GET_HEA", 	0x270 },
+	{ "H_GET_HEA_INFO", 		0x274 },
+	{ "H_ALLOC_HEA_RESOURCE", 	0x278 },
+	{ "H_ADD_CONN", 		0x284 },
+	{ "H_DEL_CONN", 		0x288 },
+	{ "H_JOIN", 			0x298 },
+	{ "H_VASI_STATE",		0x2A4 },
+	{ "H_VIOCTL",			0x2A8 },
+	{ "H_ENABLE_CRQ", 		0x2B0 },
+	{ "H_GET_EM_PARMS", 		0x2B8 },
+	{ "H_SET_MPP",			0x2D0 },
+	{ "H_GET_MPP",			0x2D4 },
+	{ "H_REG_SUB_CRQ", 		0x2DC },
+	{ "H_HOME_NODE_ASSOCIATIVITY",  0x2EC },
+	{ "H_FREE_SUB_CRQ", 		0x2E0 },
+	{ "H_SEND_SUB_CRQ", 		0x2E4 },
+	{ "H_SEND_SUB_CRQ_INDIRECT", 	0x2E8 },
+	{ "H_BEST_ENERGY", 		0x2F4 },
+	{ "H_XIRR_X",			0x2FC },
+	{ "H_RANDOM",			0x300 },
+	{ "H_COP", 			0x304 },
+	{ "H_GET_MPP_X", 		0x314 },
+	{ "H_SET_MODE", 		0x31C },
+	{ "H_BLOCK_REMOVE", 		0x328 },
+	{ "H_CLEAR_HPT", 		0x358 },
+	{ "H_REQUEST_VMC", 		0x360 },
+	{ "H_RESIZE_HPT_PREPARE", 	0x36C },
+	{ "H_RESIZE_HPT_COMMIT", 	0x370 },
+	{ "H_REGISTER_PROC_TBL", 	0x37C },
+	{ "H_SIGNAL_SYS_RESET", 	0x380 },
+	{ "H_INT_GET_SOURCE_INFO",	0x3A8 },
+	{ "H_INT_SET_SOURCE_CONFIG",	0x3AC },
+	{ "H_INT_GET_SOURCE_CONFIG",	0x3B0 },
+	{ "H_INT_GET_QUEUE_INFO",	0x3B4 },
+	{ "H_INT_SET_QUEUE_CONFIG",	0x3B8 },
+	{ "H_INT_GET_QUEUE_CONFIG",	0x3BC },
+	{ "H_INT_SET_OS_REPORTING_LINE",  0x3C0 },
+	{ "H_INT_GET_OS_REPORTING_LINE",  0x3C4 },
+	{ "H_INT_ESB",			0x3C8 },
+	{ "H_INT_SYNC",			0x3CC },
+	{ "H_INT_RESET",		0x3D0 },
+	{ "H_SCM_READ_METADATA",	0x3E4 },
+	{ "H_SCM_WRITE_METADATA",	0x3E8 },
+	{ "H_SCM_BIND_MEM",		0x3EC },
+	{ "H_SCM_UNBIND_MEM",		0x3F0 },
+	{ "H_SCM_QUERY_BLOCK_MEM_BINDING",  0x3F4 },
+	{ "H_SCM_QUERY_LOGICAL_MEM_BINDING",  0x3F8 },
+	{ "H_SCM_MEM_QUERY", 	        0x3FC },
+	{ "H_SCM_BLOCK_CLEAR",		0x400 },
+	{ "H_UNKNOWN",   0x401 },
+};
+#define NR_HCALLS (sizeof(hcalls) / sizeof(struct hcall))
+
 struct stats {
 	uint64_t total;
 	uint64_t system;
@@ -625,7 +782,7 @@ struct stats {
 	uint64_t userlib;
 	uint64_t userbin;
 	uint64_t r3;
-	uint64_t scnum;
+	uint64_t r0;
 	uint64_t idle;
 	uint64_t mftb_last;
 	uint64_t ctxswitch;
@@ -634,13 +791,16 @@ struct stats {
 	struct exception *exceptions;
 	struct call *syscalls;
 	struct call *opalcalls;
+	struct hcall *hcalls;
 	uint64_t opalcallnum;
+	uint64_t hcallnum;
 	bool opallast;
 };
 struct stats s = {
 	.syscalls = syscalls,
 	.exceptions = exceptions,
 	.opalcalls = opalcalls,
+	.hcalls = hcalls,
 };
 
 static bool is_exception_entry(unsigned long ea)
@@ -663,8 +823,27 @@ static bool is_exception_entry(unsigned long ea)
 	return false;
 }
 
+static struct hcall *hcall_find(uint32_t token)
+{
+	int i;
+
+	for (i = 0; i < NR_HCALLS; i++) { /* Linear search .. barf */
+		if (s.hcalls[i].token == token)
+			return &s.hcalls[i];
+	}
+	return &s.hcalls[NR_HCALLS -1]; /* return unknown */
+}
+
+static void hcall_increment(uint32_t token)
+{
+	struct hcall *h = hcall_find(token);
+
+	h->count++;
+}
+
 void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 {
+	uint64_t c;
 	uint32_t i;
 	bool system = false;
 	bool opal = false;
@@ -686,25 +865,32 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 
 	is_exception_entry(ea);
 
-	/* Find syscalls: syscall() case */
-	/*   li r3, ?? */
-	if ((insn & 0xffff0000) == 0x38600000)
+	/* Find syscalls: syscall() case. ie.
+	 *   li r3, ?? ; mr r0, r3
+	 */
+	if ((insn & 0xffff0000) == 0x38600000) /* li r3, ?? */
 		s.r3 = insn & 0x0000ffff;
-	/*   mr r0, r3 */
-	if (insn == 0x7c601b78)
-		s.scnum = s.r3;
+	if (insn == 0x7c601b78) /* mr r0, r3 */
+		s.r0 = s.r3;
 
 	/* Find syscalls:  Most common case li r0, ?? */
-	if ((insn & 0xffff0000) == 0x38000000)
-		s.scnum = insn & 0x0000ffff;
+	if ((insn & 0xffff0000) == 0x38000000) /* li r0, ?? */
+		s.r0 = insn & 0x0000ffff;
 	if (insn == 0x44000002) { /* sc */
-		/* check for bogus value */
-		if (s.scnum > NR_SYSCALLS)
-			s.scnum = NR_SYSCALLS - 1;
-		s.syscalls[s.scnum].count++;
-		s.scnum = NR_SYSCALLS - 1; /* make sure we don't count this again */
+		c = s.r0;
+		if (c >= NR_SYSCALLS)
+			c = NR_SYSCALLS - 1;
+		s.syscalls[c].count++;
 	}
 
+	/* Find HCALLS:  Most common case li r3, ?? */
+	if (insn == 0x44000022) { /* sc 1 */
+		s.hcallnum++;
+		c = s.r3;
+		if (c >= NR_HCALLS)
+			c = NR_HCALLS - 1;
+		hcall_increment(c);
+	}
 
 	/*
 	 * Find start of OPAL call.  If this instruction is OPAL and
@@ -712,11 +898,10 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 	 */
 	if (opal && !s.opallast) {
 		s.opalcallnum++;
-		/* check for bogus value */
-		if (s.scnum > NR_OPALCALLS)
-			s.scnum = NR_OPALCALLS - 1;
-		s.opalcalls[s.scnum].count++;
-		s.scnum = NR_SYSCALLS - 1; /* make sure we don't count this again */
+		c = s.r3;
+		if (c >= NR_OPALCALLS)
+			c = NR_OPALCALLS - 1;
+		s.opalcalls[c].count++;
 	}
 
 	/* Context switch */
@@ -750,6 +935,11 @@ static int exceptions_compare(const void *a, const void *b)
 static int call_compare(const void *a, const void *b)
 {
 	return ((struct call *)b)->count - ((struct call *)a)->count;
+}
+
+static int hcall_compare(const void *a, const void *b)
+{
+	return ((struct hcall *)b)->count - ((struct hcall *)a)->count;
 }
 
 void ppcstats_print(void)
@@ -805,7 +995,16 @@ void ppcstats_print(void)
 	for (i = 0; i < NR_OPALCALLS; i++) {
 		if (!opalcalls[i].count)
 			continue;
-		fprintf(stdout,"\t%32s\t%li\n",
+		fprintf(stdout,"\t%16s\t%li\n",
 		       opalcalls[i].name, opalcalls[i].count);
+	}
+
+	fprintf(stdout,"\nHCALLS Calls: %16li\n", s.hcallnum);
+	qsort(s.hcalls, NR_HCALLS, sizeof(struct hcall), hcall_compare);
+	for (i = 0; i < NR_HCALLS; i++) {
+		if (!hcalls[i].count)
+			continue;
+		fprintf(stdout,"\t%16s\t%li\n",
+		       hcalls[i].name, hcalls[i].count);
 	}
 }
