@@ -887,8 +887,6 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 	if (insn == 0x44000022) { /* sc 1 */
 		s.hcallnum++;
 		c = s.r3;
-		if (c >= NR_HCALLS)
-			c = NR_HCALLS - 1;
 		hcall_increment(c);
 	}
 
