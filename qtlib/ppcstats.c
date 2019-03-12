@@ -46,13 +46,8 @@ struct exception exceptions[] = {
 	{ 0xe60, "Hypervisor Maintenance"},
 	{ 0xe80, "Directed Hypervisor Doorbell"},
 	{ 0xea0, "Hypervisor Virtualization"},
-	{ 0xec0, "0xec0 Reserved"},
-	{ 0xee0, "0xee0 Reserved"},
 	{ 0xf00, "Performance Monitor"},
 	{ 0xf80, "Hypervisor Facility Unavailable"},
-	{ 0xfa0, "0xfa0 Reserved"},
-	{ 0xfc0, "0xfc0 Reserved"},
-	{ 0xfe0, "0xfe0 Reserved"},
 };
 #define NR_EXCEPTIONS (sizeof(exceptions) / sizeof(struct exception))
 
@@ -792,6 +787,8 @@ struct stats {
 	struct call *syscalls;
 	struct call *opalcalls;
 	struct hcall *hcalls;
+	uint64_t exceptionnum;
+	uint64_t syscallnum;
 	uint64_t opalcallnum;
 	uint64_t hcallnum;
 	bool opallast;
@@ -808,13 +805,14 @@ static bool is_exception_entry(unsigned long ea)
 	unsigned long exception;
 	int i;
 
-	if (((ea & 0xfffffffffffff000) != 0xc000000000004000) &&
-	    ((ea & 0xfffffffffffff000) != 0x0000000000000000))
+	if (((ea & 0xfffffffffffff01f) != 0xc000000000004000) &&
+	    ((ea & 0xfffffffffffff01f) != 0x0000000000000000))
 		return false;
 
 	exception = (ea & 0xfff);
 	for (i = 0; i < NR_EXCEPTIONS; i++) {
 		if (exception == s.exceptions[i].addr) {
+			s.exceptionnum++;
 			s.exceptions[i].count++;
 			return true;
 		}
@@ -880,6 +878,7 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 		c = s.r0;
 		if (c >= NR_SYSCALLS)
 			c = NR_SYSCALLS - 1;
+		s.syscallnum++;
 		s.syscalls[c].count++;
 	}
 
@@ -887,8 +886,6 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 	if (insn == 0x44000022) { /* sc 1 */
 		s.hcallnum++;
 		c = s.r3;
-		if (c >= NR_HCALLS)
-			c = NR_HCALLS - 1;
 		hcall_increment(c);
 	}
 
@@ -966,12 +963,12 @@ void ppcstats_print(void)
 		s.userlib, s.user?100.0*s.userlib/s.user:0);
 
 
-	fprintf(stdout,"\nContext Switches %16li\n", s.ctxswitch);
+	fprintf(stdout,"\nContext Switches: %8li\n", s.ctxswitch);
 	f = 100.0 * s.ctxswitch_ea_multiple/s.ctxswitch;
 	if (f > 10.0)
 		fprintf(stdout,"WARNING: Context Switches fuzzy by %0.2f%%)\n", f);
 
-	fprintf(stdout,"\nExceptions:\n");
+	fprintf(stdout,"\nExceptions:       %8li\n", s.exceptionnum);
 	qsort(s.exceptions, NR_EXCEPTIONS, sizeof(struct exception), exceptions_compare);
 	for (i = 0; i < NR_EXCEPTIONS; i++) {
 		if (s.exceptions[i].count) {
@@ -981,7 +978,7 @@ void ppcstats_print(void)
 		}
 	}
 
-	fprintf(stdout,"\nSyscalls:\n");
+	fprintf(stdout,"\nSyscalls:         %8li\n", s.syscallnum);
 	qsort(s.syscalls, NR_SYSCALLS, sizeof(struct call), call_compare);
 	for (i = 0; i < NR_SYSCALLS; i++) {
 		if (!syscalls[i].count)
@@ -990,7 +987,7 @@ void ppcstats_print(void)
 		       syscalls[i].name, syscalls[i].count);
 	}
 
-	fprintf(stdout,"\nOPAL Calls: %16li\n", s.opalcallnum);
+	fprintf(stdout,"\nOPAL Calls:       %8li\n", s.opalcallnum);
 	qsort(s.opalcalls, NR_OPALCALLS, sizeof(struct call), call_compare);
 	for (i = 0; i < NR_OPALCALLS; i++) {
 		if (!opalcalls[i].count)
@@ -999,7 +996,7 @@ void ppcstats_print(void)
 		       opalcalls[i].name, opalcalls[i].count);
 	}
 
-	fprintf(stdout,"\nHCALLS Calls: %16li\n", s.hcallnum);
+	fprintf(stdout,"\nHCALLS Calls:     %8li\n", s.hcallnum);
 	qsort(s.hcalls, NR_HCALLS, sizeof(struct hcall), hcall_compare);
 	for (i = 0; i < NR_HCALLS; i++) {
 		if (!hcalls[i].count)
