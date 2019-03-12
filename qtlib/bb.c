@@ -55,16 +55,24 @@ struct bb_cache {
 	struct bbe *bb;
 	int size;
 	int next;
+	uint64_t instructions_num;
 };
 struct bb_cache bb;
 
 int bb_debug = 0;
 
+static inline uint64_t bb_instruction_num(struct bbe *t)
+{
+	return t->size * t->hit_count;
+}
+
 static inline void bb_print(struct bbe *t)
 {
-	printf("ea:%016"PRIx64" size:% 3"PRId64" "
-	       "hit:%"PRIi64"\n",
-	       t->ea, t->size, t->hit_count);
+	float usage = 100.0 * ((double)bb_instruction_num(t)/(double)bb.instructions_num);
+
+	printf("ea:%016"PRIx64" size:% 4"PRId64" "
+	       "hit:% 10"PRIi64" %5.2f%% \n",
+	       t->ea, t->size, t->hit_count, usage);
 }
 
 static int bb_compare_ea(const void *a, const void *b)
@@ -85,19 +93,23 @@ static int bb_compare_ea(const void *a, const void *b)
 		return 0;
 }
 
-static int bb_compare_hit(const void *a, const void *b)
+static int bb_compare_num(const void *a, const void *b)
 {
 
 	struct bbe *bbe_a = (struct bbe *)a;
 	struct bbe *bbe_b = (struct bbe *)b;
+	uint64_t a_num, b_num;
+
+	a_num = bb_instruction_num(bbe_a);
+	b_num = bb_instruction_num(bbe_b);
 
 	if (bbe_a->valid && !bbe_b->valid)
 		return -1;
 	else if (!bbe_a->valid && bbe_b->valid)
 		return 1;
-	else if (bbe_a->hit_count > bbe_b->hit_count)
+	else if (a_num > b_num)
 		return -1;
-	else if (bbe_a->hit_count < bbe_b->hit_count)
+	else if (a_num < b_num)
 		return 1;
 	else
 		return 0;
@@ -163,7 +175,8 @@ void bb_coalesce(void)
 			ea = ttest->ea;
 		}
 	}
-	qsort(bb.bb, bb.next, sizeof(struct bbe), bb_compare_hit);
+	/* make sure valids are all togetther */
+	qsort(bb.bb, bb.next, sizeof(struct bbe), bb_compare_num);
 	for (i = 0; i < bb.next; i++)
 		if (!bb.bb[i].valid)
 			bb.next = i;
@@ -177,7 +190,7 @@ static void __bb_dump(bool sort)
 	if (sort) {
 		qsort(bb.bb, bb.next, sizeof(struct bbe), bb_compare_ea);
 		bb_coalesce();
-		qsort(bb.bb, bb.next, sizeof(struct bbe), bb_compare_hit);
+		qsort(bb.bb, bb.next, sizeof(struct bbe), bb_compare_num);
 	}
 	for (i = 0; i < bb.next; i++) {
 		printf("BBDUMP %02i: ", i);
@@ -198,6 +211,7 @@ void bb_ea_log(uint64_t ea)
 //
 	struct obj *obj;
 
+	bb.instructions_num++;
 	obj = htable_obj_get(&bb.ht, &ea);
 	if (obj) {
 		t = &bb.bb[obj->index];
