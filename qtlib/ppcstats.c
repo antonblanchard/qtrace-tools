@@ -46,13 +46,8 @@ struct exception exceptions[] = {
 	{ 0xe60, "Hypervisor Maintenance"},
 	{ 0xe80, "Directed Hypervisor Doorbell"},
 	{ 0xea0, "Hypervisor Virtualization"},
-	{ 0xec0, "0xec0 Reserved"},
-	{ 0xee0, "0xee0 Reserved"},
 	{ 0xf00, "Performance Monitor"},
 	{ 0xf80, "Hypervisor Facility Unavailable"},
-	{ 0xfa0, "0xfa0 Reserved"},
-	{ 0xfc0, "0xfc0 Reserved"},
-	{ 0xfe0, "0xfe0 Reserved"},
 };
 #define NR_EXCEPTIONS (sizeof(exceptions) / sizeof(struct exception))
 
@@ -808,8 +803,8 @@ static bool is_exception_entry(unsigned long ea)
 	unsigned long exception;
 	int i;
 
-	if (((ea & 0xfffffffffffff000) != 0xc000000000004000) &&
-	    ((ea & 0xfffffffffffff000) != 0x0000000000000000))
+	if (((ea & 0xfffffffffffff01f) != 0xc000000000004000) &&
+	    ((ea & 0xfffffffffffff01f) != 0x0000000000000000))
 		return false;
 
 	exception = (ea & 0xfff);
