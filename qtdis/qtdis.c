@@ -475,6 +475,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	uint64_t radix_insn_ptes[NR_RADIX_PTES];
 	unsigned int radix_nr_insn_ptes = 0;
 	uint64_t radix_data_ptes[NR_RADIX_PTES];
+	uint8_t length = 0;
 
 	q = p;
 
@@ -551,6 +552,15 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 	if (flags & QTRACE_DATA_RPN_PRESENT) {
 		data_rpn = be32_to_cpup(p);
 		p += sizeof(uint32_t);
+	}
+
+	if (flags & QTRACE_LENGTH_PRESENT) {
+		length = *(uint8_t *)p;
+		p += sizeof(uint8_t);
+	}
+
+	if (flags & QTRACE_DATA_PRESENT) {
+		p += length;
 	}
 
 	if (flags & QTRACE_IAR_PRESENT) {
