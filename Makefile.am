@@ -7,7 +7,11 @@ lib_LIBRARIES = libqtrace.a libppcstats.a libbb.a
 
 libqtrace_a_SOURCES = qtlib/qtreader.c qtlib/qtwriter.c
 
-libppcstats_a_SOURCES = qtlib/ppcstats.c
+libppcstats_a_SOURCES = qtlib/ppcstats.c \
+			qtlib/ppc-opc.c \
+			qtrace-bbv/ccan/hash/hash.c \
+			qtrace-bbv/ccan/htable/htable.c
+libppcstats_a_CFLAGS = $(AM_CFLAGS) -I$(top_srcdir)/qtrace-bbv
 
 libbb_a_SOURCES = qtlib/bb.c \
 	qtrace-bbv/ccan/hash/hash.c \

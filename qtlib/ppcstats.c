@@ -14,9 +14,48 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "ccan/hash/hash.h"
+#include "ccan/htable/htable_type.h"
+
+#include "ppc-opc.c"
+#include "ppcstats.h"
 #include "ppcstats_private.c"
 
-#define NR_HCALLS (sizeof(hcalls) / sizeof(struct hcall))
+#define NR_OPCODES (sizeof(powerpc_opcodes) / sizeof(struct powerpc_opcode))
+
+/* setup hash table for instruction mix counts */
+struct cache_obj {
+	uint32_t opcode;
+	int index;
+};
+
+static const uint32_t *cache_obj_opcode(const struct cache_obj *obj)
+{
+	return &obj->opcode;
+}
+
+static size_t cache_obj_hash(const uint32_t *opcode)
+{
+	return hash(opcode, 1, 0);
+}
+
+static bool cache_obj_cmp(const struct cache_obj *obj, const uint32_t *opcode)
+{
+	return obj->opcode == *opcode;
+}
+
+HTABLE_DEFINE_TYPE(struct cache_obj, cache_obj_opcode, cache_obj_hash, cache_obj_cmp, htable_cache);
+
+struct opcode_major {
+	int start;
+	int end;
+};
+
+/* power9 dialect from binutils-gdb opcodes/ppc-dis.c ppc_opts:"power9" */
+#define DIALECT ( PPC_OPCODE_PPC | PPC_OPCODE_ISEL | PPC_OPCODE_64 \
+		  | PPC_OPCODE_POWER4 | PPC_OPCODE_POWER5 | PPC_OPCODE_POWER6 \
+		  | PPC_OPCODE_POWER7 | PPC_OPCODE_POWER8 | PPC_OPCODE_POWER9 \
+		  | PPC_OPCODE_ALTIVEC | PPC_OPCODE_VSX )
 
 struct stats {
 	uint64_t total;
@@ -41,7 +80,17 @@ struct stats {
 	uint64_t opalcallnum;
 	uint64_t hcallnum;
 	bool opallast;
+	bool stats;
+	bool imix;
+
+	struct opcode_major major[64]; 	// 6 bits of major opcode
+	uint64_t insn_count[NR_OPCODES];
+	uint64_t unknown;
+	struct htable_cache cache;
+	uint64_t cache_hits;
+	uint64_t cache_misses;
 };
+
 struct stats s = {
 	.syscalls = syscalls,
 	.exceptions = exceptions,
@@ -88,14 +137,49 @@ static void hcall_increment(uint32_t token)
 	h->count++;
 }
 
-void ppcstats_log_inst(unsigned long ea, uint32_t insn)
+void ppcstats_init(uint64_t flags)
+{
+	int i;
+
+	assert(flags);
+
+	if (flags & PPCSTATS_STATS)
+		s.stats = true;
+	if (flags & PPCSTATS_IMIX)
+		s.imix = true;
+
+	if (!(flags & PPCSTATS_IMIX))
+		return;
+
+	/* init hash table for imix cache */
+	assert(htable_cache_init_sized(&s.cache, 1024 * 1024));
+
+	/* Setup table for where major opcodes are in full opcodes table
+	 * This is so we don't have to search has much.
+	 */
+	for (i = 0; i < 64; i++)
+		s.major[i].start = -1;
+	for (i = 0; i < NR_OPCODES - 1; i++) {
+		struct opcode_major *op;
+		unsigned int prefix;
+
+		prefix = 0x3f & (powerpc_opcodes[i].opcode >> 26);
+
+		op = &s.major[prefix];
+		if (op->start == -1)
+			op->start = i;
+
+		op->end = i;
+	}
+}
+
+static void ppcstats_log_inst_stats(unsigned long ea, uint32_t insn)
 {
 	uint64_t c;
 	uint32_t i;
 	bool system = false;
 	bool opal = false;
 
-	s.total++;
 	if (ea >= 0xc000000000000000) {
 		system = true;
 		s.system++;
@@ -170,7 +254,64 @@ void ppcstats_log_inst(unsigned long ea, uint32_t insn)
 		s.mftb_last = s.total;
 	}
 	s.opallast = opal;
+}
 
+static void ppcstats_log_inst_imix(unsigned long ea, uint32_t insn)
+{
+	struct cache_obj *obj;
+	struct opcode_major *op;
+	unsigned int prefix;
+	uint32_t i;
+
+	/* Check cache for opcode */
+	obj = htable_cache_get(&s.cache, &insn);
+	if (obj) {
+		s.insn_count[obj->index]++;
+		s.cache_hits++;
+		return;
+	}
+
+	/* Doh! Not in cache. Go find it and put in cache.
+	 *
+	 * We linearly look though the full opcode table starting at
+	 * major opcode we currently have. When we find it, add to the
+	 * cache.
+	 */
+	prefix = insn >> 26;
+	op = &s.major[prefix];
+	s.cache_misses++;
+
+	for (i = op->start; i <= op->end; i++) {
+		const struct powerpc_opcode *po = &powerpc_opcodes[i];
+
+		if (((insn & (uint32_t)po->mask) == (uint32_t)po->opcode) &&
+		    (po->flags & DIALECT)) {
+			s.insn_count[i]++;
+
+			obj = malloc(sizeof(*obj));
+			assert(obj);
+
+			*obj = (struct cache_obj) {
+				.opcode = insn,
+				.index = i,
+			};
+
+			htable_cache_add(&s.cache, obj);
+			return;
+		}
+	}
+
+	s.unknown++;
+}
+
+void ppcstats_log_inst(unsigned long ea, uint32_t insn)
+{
+	s.total++;
+
+	if (s.stats)
+		ppcstats_log_inst_stats(ea, insn);
+	if (s.imix)
+		ppcstats_log_inst_imix(ea, insn);
 }
 
 static int exceptions_compare(const void *a, const void *b)
@@ -188,7 +329,15 @@ static int hcall_compare(const void *a, const void *b)
 	return ((struct hcall *)b)->count - ((struct hcall *)a)->count;
 }
 
-void ppcstats_print(void)
+static int insn_compare(const void *a, const void *b)
+{
+	int id1 = *(const int *)a;
+	int id2 = *(const int *)b;
+
+	return s.insn_count[id2] - s.insn_count[id1];
+}
+
+static void ppcstats_print_stats(void)
 {
 	int i;
 	float f;
@@ -246,6 +395,7 @@ void ppcstats_print(void)
 	}
 
 	fprintf(stdout,"\nHCALLS Calls:     %8li\n", s.hcallnum);
+
 	qsort(s.hcalls, NR_HCALLS, sizeof(struct hcall), hcall_compare);
 	for (i = 0; i < NR_HCALLS; i++) {
 		if (!hcalls[i].count)
@@ -253,4 +403,46 @@ void ppcstats_print(void)
 		fprintf(stdout,"\t%16s\t%li\n",
 		       hcalls[i].name, hcalls[i].count);
 	}
+}
+
+static void ppcstats_print_imix(void)
+{
+	int i;
+	int index[NR_OPCODES];
+
+	/* Create indexes and then sort based on count */
+	for (i = 0 ; i < NR_OPCODES; i++)
+		index[i] = i;
+	qsort(index, NR_OPCODES, sizeof(int), insn_compare);
+
+	/* Now print in order */
+	fprintf(stdout,"\nInstruction mix:\n");
+	for (i = 0; i < NR_OPCODES; i++) {
+		const struct powerpc_opcode *po = &powerpc_opcodes[index[i]];
+		uint64_t count = s.insn_count[index[i]];
+
+		if (!count)
+			break;
+
+		fprintf(stdout,"\t%16s\t% 9li %6.2f%%\n",
+			po->name, count,
+			100.0 * (double)count/(double)s.total);
+	}
+
+	fprintf(stdout,"\nUNKNOWN instruction:   %16li\n", s.unknown);
+#if 0
+	fprintf(stdout,"\nCache Hits:   %16li %6.2f%%\n", s.cache_hits,
+		100.0 * (double)(s.cache_hits)/(double)(s.cache_hits + s.cache_misses));
+	fprintf(stdout,"Cache Misses: %16li %6.2f%%\n", s.cache_misses,
+		100.0 * (double)(s.cache_misses)/(double)(s.cache_hits + s.cache_misses));
+#endif
+}
+
+void ppcstats_print(void)
+{
+
+	if (s.stats)
+		ppcstats_print_stats();
+	if (s.imix)
+		ppcstats_print_imix();
 }
