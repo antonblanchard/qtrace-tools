@@ -198,7 +198,11 @@ static void print_stat(struct htm_decode_stat *stat)
 
 static void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-dsb] [-o <outfile.qt>] <htmdump>\n", prog);
+	fprintf(stderr, "Usage: %s [-Ddsib]... [-o <outfile.qt>] <htmdump>\n\n", prog);
+	fprintf(stderr, "\t-D \t\t\tDebug info\n");
+	fprintf(stderr, "\t-d \t\t\tDump with some details\n");
+	fprintf(stderr, "\t-s \t\t\tDump stats\n");
+	fprintf(stderr, "\t-b \t\t\tBasic block anaylsis\n");
 }
 
 int main(int argc, char * const argv[])
@@ -244,6 +248,7 @@ int main(int argc, char * const argv[])
 
 	if (optind >= argc) {
 		fprintf(stderr, "Expected arguments after options\n");
+		usage(argv[0]);
 		exit(1);
 	}
 
