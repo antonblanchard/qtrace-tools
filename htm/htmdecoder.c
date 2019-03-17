@@ -198,7 +198,12 @@ static void print_stat(struct htm_decode_stat *stat)
 
 static void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-dsb] [-o <outfile.qt>] <htmdump>\n", prog);
+	fprintf(stderr, "Usage: %s [-Ddsib]... [-o <outfile.qt>] <htmdump>\n\n", prog);
+	fprintf(stderr, "\t-D \t\t\tDebug info\n");
+	fprintf(stderr, "\t-d \t\t\tDump with some details\n");
+	fprintf(stderr, "\t-s \t\t\tDump stats\n");
+	fprintf(stderr, "\t-i \t\t\tDump instruction mix\n");
+	fprintf(stderr, "\t-b \t\t\tBasic block anaylsis\n");
 }
 
 int main(int argc, char * const argv[])
@@ -212,9 +217,10 @@ int main(int argc, char * const argv[])
 	bool debug = false;
 	bool detail = false;
 	bool show_stats_only = false;
+	bool show_imix_only = false;
 	bool basic_block_only = false;
 
-	while ((opt = getopt(argc, argv, "Ddo:sb")) != -1) {
+	while ((opt = getopt(argc, argv, "Ddo:sib")) != -1) {
 		switch (opt) {
 			case 'D':
 				debug = true;
@@ -232,6 +238,11 @@ int main(int argc, char * const argv[])
 			case 's':
 				show_stats_only = true;
 				break;
+
+			case 'i':
+				show_imix_only = true;
+				break;
+
 			case 'b':
 				basic_block_only = true;
 				break;
@@ -244,6 +255,7 @@ int main(int argc, char * const argv[])
 
 	if (optind >= argc) {
 		fprintf(stderr, "Expected arguments after options\n");
+		usage(argv[0]);
 		exit(1);
 	}
 
@@ -251,8 +263,8 @@ int main(int argc, char * const argv[])
 	if (output == NULL) {
 		ret = snprintf(path, sizeof(path), "%s.qt", input);
 	} else {
-		if (show_stats_only || basic_block_only) {
-			fprintf(stderr, "ERROR: -s/-b and -o options incompatible\n");
+		if (show_stats_only || basic_block_only || show_imix_only) {
+			fprintf(stderr, "ERROR: -s/-i/-b and -o options incompatible\n");
 			exit(1);
 		}
 		ret = snprintf(path, sizeof(path), "%s", output);
@@ -269,7 +281,17 @@ int main(int argc, char * const argv[])
 		exit(1);
 	}
 
-	if (!show_stats_only && !basic_block_only) {
+
+	if (show_stats_only || show_imix_only) {
+		uint64_t flags = 0;
+		if (show_stats_only)
+			flags |= PPCSTATS_STATS;
+		if (show_imix_only)
+			flags |= PPCSTATS_IMIX;
+		ppcstats_init(flags);
+	}
+
+	if (!show_stats_only && !basic_block_only && !show_imix_only) {
 		if (!qtwriter_open(&state.qt, path, 0)) {
 			fprintf(stderr, "Failed to open output file %s\n", path);
 			close(fd);
@@ -287,13 +309,13 @@ int main(int argc, char * const argv[])
 	}
 
 	/* FIXME: This is a layering violation, but YOLO */
-	if (show_stats_only)
+	if (show_stats_only || show_imix_only)
 		ppcstats_print();
 
 	if (basic_block_only)
 		bb_dump();
 
-	if (!show_stats_only && !basic_block_only)
+	if (!show_stats_only && !basic_block_only && !show_imix_only)
 		qtwriter_close(&state.qt);
 	close(fd);
 

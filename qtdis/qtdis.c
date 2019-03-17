@@ -49,6 +49,7 @@ static unsigned int verbose;
 static uint32_t version;
 static int dump_nr;
 static bool show_stats_only;
+static bool show_imix_only;
 static bool basic_block_only;
 
 static unsigned int get_radix_insn_ptes(uint16_t flags3)
@@ -421,7 +422,7 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 	info.buffer_vma = ea;
 	info.buffer_length = bufsize;
 
-	if (show_stats_only || basic_block_only)
+	if (show_stats_only || basic_block_only || show_imix_only)
 		goto out;
 	if (!disassembler_p) {
 		fprintf(stdout, "0x%x", *buf);
@@ -432,7 +433,7 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 	}
 
 out:
-	if (show_stats_only)
+	if (show_stats_only || show_imix_only)
 		ppcstats_log_inst(ea, *buf);
 	if (basic_block_only)
 		bb_ea_log(ea);
@@ -696,7 +697,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
 			fprintf(stdout, "\t; ldst 0x%016lx", data_address);
 	} else {
-		if (!show_stats_only && !basic_block_only) {
+		if (!show_stats_only && !basic_block_only && !show_imix_only) {
 			__print_address(*ea);
 			print_raw_insn(insn, sizeof(insn));
 			fprintf(stdout, "\t");
@@ -759,7 +760,7 @@ static unsigned long parse_record(void *p, unsigned long *ea)
 			fprintf(stdout, " TERM NODE 0x%02x TERM CODE 0x%02x", term_node, term_code);
 	}
 
-	if (!show_stats_only && !basic_block_only)
+	if (!show_stats_only && !basic_block_only && !show_imix_only)
 		fprintf(stdout, "\n");
 next:
 	if (flags & QTRACE_IAR_PRESENT)
@@ -781,7 +782,8 @@ static void usage(void)
 #endif
 	fprintf(stderr, "\t-d <nr>\t\t\tdump with strategy nr\n");
 	fprintf(stderr, "\t       \t\t\t1. ifetch, load, store addresses\n");
-	fprintf(stderr, "\t-s \t\t\tonly dump stats\n");
+	fprintf(stderr, "\t-s \t\t\tdump stats\n");
+	fprintf(stderr, "\t-i \t\t\tdump instruction mix\n");
 	fprintf(stderr, "\t-c \t\t\tbasic block anaylsis\n");
 }
 
@@ -795,9 +797,10 @@ int main(int argc, char *argv[])
 
 	show_stats_only = false;
 	basic_block_only = false;
+	show_imix_only = false;
 
 	while (1) {
-		signed char c = getopt(argc, argv, "e:d:rvbsc");
+		signed char c = getopt(argc, argv, "e:d:rvbsci");
 		if (c < 0)
 			break;
 
@@ -821,6 +824,10 @@ int main(int argc, char *argv[])
 			show_stats_only = true;
 			break;
 
+		case 'i':
+			show_imix_only = true;
+			break;
+
 		case 'c':
 			basic_block_only = true;
 			break;
@@ -840,11 +847,21 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if ((show_stats_only || basic_block_only) && (verbose || show_raw_insn)) {
-		fprintf(stderr, "Dumping stats (-s) can only be used alone\n");
+	if ((show_stats_only || basic_block_only || show_imix_only) &&
+	    (verbose || show_raw_insn)) {
+		fprintf(stderr, "Dumping stats (-s/-i/-c) can only be used alone\n");
 		exit(1);
 	}
-	
+
+	if (show_stats_only || show_imix_only){
+		uint64_t flags = 0;
+		if (show_stats_only)
+			flags |= PPCSTATS_STATS;
+		if (show_imix_only)
+			flags |= PPCSTATS_IMIX;
+		ppcstats_init(flags);
+	}
+
 	fd = open(argv[optind], O_RDONLY);
 	if (fd < 0) {
 		perror("open");
@@ -886,7 +903,7 @@ int main(int argc, char *argv[])
 		size -= x;
 	}
 
-	if (show_stats_only)
+	    if (show_stats_only || show_imix_only)
 		ppcstats_print();
 
 	if (basic_block_only)
