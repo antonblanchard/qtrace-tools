@@ -68,6 +68,7 @@ struct stats {
 	uint64_t r0;
 	uint64_t idle;
 	uint64_t mftb_last;
+	uint64_t mr3131_last;
 	uint64_t ctxswitch;
 	uint64_t ctxswitch_ea;
 	uint64_t ctxswitch_ea_multiple;
@@ -245,6 +246,7 @@ static void ppcstats_log_inst_stats(unsigned long ea, uint32_t insn)
 			s.ctxswitch_ea_multiple++;
 	}
 
+	/* Idle time in the kernel */
 	/* look for mftb r??  within 10 cycles */
 	if (system && ((insn & 0xfc1fffff) == 0x7c0c42a6)) {
 		i = s.total - s.mftb_last;
@@ -253,6 +255,15 @@ static void ppcstats_log_inst_stats(unsigned long ea, uint32_t insn)
 			s.idle += i;
 		s.mftb_last = s.total;
 	}
+	/* look for mr r31, r31  within 10 cycles */
+	if (system && (insn == 0x7ffffb78)) {
+		i = s.total - s.mr3131_last;
+		if (i < 10)
+			/* We are in an old idle loop */
+			s.idle += i;
+		s.mr3131_last = s.total;
+	}
+
 	s.opallast = opal;
 }
 
