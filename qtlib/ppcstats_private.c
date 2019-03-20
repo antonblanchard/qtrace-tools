@@ -278,6 +278,7 @@ struct call syscalls[] = {
 	{ "futex" },              // 221
 	{ "sched_setaffinity" },  // 222
 	{ "sched_getaffinity" },  // 223
+	{ "UNKNOWN_224" },        // 224
 	{ "tuxcall" },            // 225
 	{ "sendfile64" },         // 226
 	{ "io_setup" },           // 227
@@ -419,6 +420,18 @@ struct call syscalls[] = {
 	{ "switch_endian" },      // 363
 	{ "userfaultfd" },        // 364
 	{ "membarrier" },         // 365
+	{ "UNKNOWN_366" },        // 366
+	{ "UNKNOWN_367" },        // 367
+	{ "UNKNOWN_368" },        // 368
+	{ "UNKNOWN_369" },        // 369
+	{ "UNKNOWN_370" },        // 370
+	{ "UNKNOWN_371" },        // 371
+	{ "UNKNOWN_372" },        // 372
+	{ "UNKNOWN_373" },        // 373
+	{ "UNKNOWN_374" },        // 374
+	{ "UNKNOWN_375" },        // 375
+	{ "UNKNOWN_376" },        // 376
+	{ "UNKNOWN_377" },        // 377
 	{ "mlock2" },             // 378
 	{ "copy_file_range" },    // 379
 	{ "preadv2" },            // 380
