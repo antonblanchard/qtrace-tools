@@ -166,7 +166,7 @@ void bb_coalesce(void)
 	/* Coalesce consecutive entres with same hit count & incrementing ea */
 	for (i = 1; i < bb.next; i++) {
 		t = &bb.bb[i];
-		if ((t->ea == ea + 4) && abs(t->hit_count - ttest->hit_count) < 2) {
+		if ((t->ea == ea + 4) && abs(t->hit_count - ttest->hit_count) < 4) {
 			t->valid = 0;
 			ea = t->ea;
 			ttest->size++;
