@@ -229,7 +229,7 @@ static void ppcstats_log_inst_stats(unsigned long ea, uint32_t insn)
 	 */
 	if (opal && !s.opallast) {
 		s.opalcallnum++;
-		c = s.r3;
+		c = s.r0;
 		if (c >= NR_OPALCALLS)
 			c = NR_OPALCALLS - 1;
 		s.opalcalls[c].count++;
