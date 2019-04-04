@@ -1723,7 +1723,7 @@ extract_sxl (uint64_t insn,
    omit the parens, since the macros are never used in a context where
    the addition will be ambiguous.  */
 
-const struct powerpc_operand powerpc_operands[] =
+const struct powerpc_operand_qt powerpc_operands_qt[] =
 {
   /* The zero index is used to indicate the end of the list of
      operands.  */
@@ -2602,8 +2602,8 @@ const struct powerpc_operand powerpc_operands[] =
   { 0x3, 13, NULL, NULL, 0 },
 };
 
-const unsigned int num_powerpc_operands = (sizeof (powerpc_operands)
-					   / sizeof (powerpc_operands[0]));
+const unsigned int num_powerpc_operands_qt = (sizeof (powerpc_operands_qt)
+					   / sizeof (powerpc_operands_qt[0]));
 
 /* Macros used to form opcodes.  */
 
@@ -3529,7 +3529,7 @@ const unsigned int num_powerpc_operands = (sizeof (powerpc_operands)
    vaguely sorted within major opcode too, except of course where
    constrained otherwise by disassembler operation.  */
 
-const struct powerpc_opcode powerpc_opcodes[] = {
+const struct powerpc_opcode_qt powerpc_opcodes_qt[] = {
 {"attn",	X(0,256),	X_MASK,	  POWER4|PPCA2,	PPC476|PPCVLE,	{0}},
 {"tdlgti",	OPTO(2,TOLGT),	OPTO_MASK,   PPC64,	PPCVLE,		{RA, SI}},
 {"tdllti",	OPTO(2,TOLLT),	OPTO_MASK,   PPC64,	PPCVLE,		{RA, SI}},
@@ -7579,14 +7579,14 @@ const struct powerpc_opcode powerpc_opcodes[] = {
 {"fcfidu.",	XRC(63,974,1),	XRA_MASK, POWER7|PPCA2,	PPCVLE,		{FRT, FRB}},
 };
 
-const unsigned int powerpc_num_opcodes =
-  sizeof (powerpc_opcodes) / sizeof (powerpc_opcodes[0]);
+const unsigned int powerpc_num_opcodes_qt =
+  sizeof (powerpc_opcodes_qt) / sizeof (powerpc_opcodes_qt[0]);
 
 /* The VLE opcode table.
 
    The format of this opcode table is the same as the main opcode table.  */
 
-const struct powerpc_opcode vle_opcodes[] = {
+const struct powerpc_opcode_qt vle_opcodes_qt[] = {
 {"se_illegal",	C(0),		C_MASK,		PPCVLE,	0,		{}},
 {"se_isync",	C(1),		C_MASK,		PPCVLE,	0,		{}},
 {"se_sc",	C(2),		C_MASK,		PPCVLE,	0,		{}},
@@ -8507,8 +8507,8 @@ const struct powerpc_opcode vle_opcodes[] = {
 {"se_bl",	BD8(58,0,1),	BD8_MASK,	PPCVLE,	0,		{B8}},
 };
 
-const unsigned int vle_num_opcodes =
-  sizeof (vle_opcodes) / sizeof (vle_opcodes[0]);
+const unsigned int vle_num_opcodes_qt =
+  sizeof (vle_opcodes_qt) / sizeof (vle_opcodes_qt[0]);
 
 /* The macro table.  This is only used by the assembler.  */
 
@@ -8522,7 +8522,7 @@ const unsigned int vle_num_opcodes =
    the underlying instructions don't support extracting 0 bits but do
    support extracting the whole word (32 bits in this case).  */
 
-const struct powerpc_macro powerpc_macros[] = {
+const struct powerpc_macro_qt powerpc_macros_qt[] = {
 {"extldi",   4,	PPC64,	"rldicr %0,%1,%3,(%2)-1"},
 {"extldi.",  4,	PPC64,	"rldicr. %0,%1,%3,(%2)-1"},
 {"extrdi",   4,	PPC64,	"rldicl %0,%1,((%2)+(%3))&((%2)+(%3)<>64),64-(%2)"},
@@ -8607,11 +8607,11 @@ const struct powerpc_macro powerpc_macros[] = {
 {"evdotpwsssia", 3, PPCSPE2, "evdotpwssmia %0,%1,%2"}
 };
 
-const int powerpc_num_macros =
-  sizeof (powerpc_macros) / sizeof (powerpc_macros[0]);
+const int powerpc_num_macros_qt =
+  sizeof (powerpc_macros_qt) / sizeof (powerpc_macros_qt[0]);
 
 /* SPE v2 instruction set from SPE2PIM Rev. 2 08/2011 */
-const struct powerpc_opcode spe2_opcodes[] = {
+const struct powerpc_opcode_qt spe2_opcodes_qt[] = {
 {"evdotpwcssi",		  VX (4, 128),		VX_MASK,		PPCSPE2, 0, {RD, RA, RB}},
 {"evdotpwcsmi",		  VX (4, 129),		VX_MASK,		PPCSPE2, 0, {RD, RA, RB}},
 {"evdotpwcssfr",	  VX (4, 130),		VX_MASK,		PPCSPE2, 0, {RD, RA, RB}},
@@ -9398,5 +9398,5 @@ const struct powerpc_opcode spe2_opcodes[] = {
 {"evavgdsr",		  VX (4, 1663),		VX_MASK,		PPCSPE2, 0, {RD, RA, RB}},
 };
 
-const unsigned int spe2_num_opcodes =
-  sizeof (spe2_opcodes) / sizeof (spe2_opcodes[0]);
+const unsigned int spe2_num_opcodes_qt =
+  sizeof (spe2_opcodes_qt) / sizeof (spe2_opcodes_qt[0]);

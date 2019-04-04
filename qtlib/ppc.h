@@ -32,7 +32,7 @@ typedef uint64_t ppc_cpu_t;
 
 /* The opcode table is an array of struct powerpc_opcode.  */
 
-struct powerpc_opcode
+struct powerpc_opcode_qt
 {
   /* The opcode name.  */
   const char *name;
@@ -66,12 +66,12 @@ struct powerpc_opcode
 /* The table itself is sorted by major opcode number, and is otherwise
    in the order in which the disassembler should consider
    instructions.  */
-extern const struct powerpc_opcode powerpc_opcodes[];
+extern const struct powerpc_opcode_qt powerpc_opcodes_qt[];
 extern const unsigned int powerpc_num_opcodes;
-extern const struct powerpc_opcode vle_opcodes[];
-extern const unsigned int vle_num_opcodes;
-extern const struct powerpc_opcode spe2_opcodes[];
-extern const unsigned int spe2_num_opcodes;
+extern const struct powerpc_opcode_qt vle_opcodes_qt[];
+extern const unsigned int vle_num_opcodes_qt;
+extern const struct powerpc_opcode_qt spe2_opcodes_qt[];
+extern const unsigned int spe2_num_opcodes_qt;
 
 /* Values defined for the flags field of a struct powerpc_opcode.  */
 
@@ -246,7 +246,7 @@ extern const unsigned int spe2_num_opcodes;
 
 /* The operands table is an array of struct powerpc_operand.  */
 
-struct powerpc_operand
+struct powerpc_operand_qt
 {
   /* A bitmask of bits in the operand.  */
   uint64_t bitm;
@@ -314,8 +314,8 @@ struct powerpc_operand
 /* Elements in the table are retrieved by indexing with values from
    the operands field of the powerpc_opcodes table.  */
 
-extern const struct powerpc_operand powerpc_operands[];
-extern const unsigned int num_powerpc_operands;
+extern const struct powerpc_operand_qt powerpc_operands_qt[];
+extern const unsigned int num_powerpc_operands_qt;
 
 /* Use with the shift field of a struct powerpc_operand to indicate
      that BITM and SHIFT cannot be used to determine where the operand
@@ -432,7 +432,7 @@ extern const unsigned int num_powerpc_operands;
    with the operands table for simplicity.  The macro table is an
    array of struct powerpc_macro.  */
 
-struct powerpc_macro
+struct powerpc_macro_qt
 {
   /* The macro name.  */
   const char *name;
@@ -451,9 +451,9 @@ struct powerpc_macro
   const char *format;
 };
 
-extern const struct powerpc_macro powerpc_macros[];
-extern const int powerpc_num_macros;
-
+extern const struct powerpc_macro_qt powerpc_macros_qt[];
+extern const int powerpc_num_macros_qt;
+#if 0
 extern ppc_cpu_t ppc_parse_cpu (ppc_cpu_t, ppc_cpu_t *, const char *);
 
 static inline int64_t
@@ -466,7 +466,7 @@ ppc_optional_operand_value (const struct powerpc_operand *operand,
     return (*operand->extract) (insn, dialect, &num_optional);
   return 0;
 }
-
+#endif
 /* PowerPC VLE insns.  */
 #define E_OPCODE_MASK		0xfc00f800
 

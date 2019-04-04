@@ -21,7 +21,7 @@
 #include "ppcstats.h"
 #include "ppcstats_private.c"
 
-#define NR_OPCODES (sizeof(powerpc_opcodes) / sizeof(struct powerpc_opcode))
+#define NR_OPCODES (sizeof(powerpc_opcodes_qt) / sizeof(struct powerpc_opcode_qt))
 
 /* setup hash table for instruction mix counts */
 struct cache_obj {
@@ -164,7 +164,7 @@ void ppcstats_init(uint64_t flags)
 		struct opcode_major *op;
 		unsigned int prefix;
 
-		prefix = 0x3f & (powerpc_opcodes[i].opcode >> 26);
+		prefix = 0x3f & (powerpc_opcodes_qt[i].opcode >> 26);
 
 		op = &s.major[prefix];
 		if (op->start == -1)
@@ -293,7 +293,7 @@ static void ppcstats_log_inst_imix(unsigned long ea, uint32_t insn)
 	s.cache_misses++;
 
 	for (i = op->start; i <= op->end; i++) {
-		const struct powerpc_opcode *po = &powerpc_opcodes[i];
+		const struct powerpc_opcode_qt *po = &powerpc_opcodes_qt[i];
 
 		if (((insn & (uint32_t)po->mask) == (uint32_t)po->opcode) &&
 		    (po->flags & DIALECT)) {
@@ -429,7 +429,7 @@ static void ppcstats_print_imix(void)
 	/* Now print in order */
 	fprintf(stdout,"\nInstruction mix:\n");
 	for (i = 0; i < NR_OPCODES; i++) {
-		const struct powerpc_opcode *po = &powerpc_opcodes[index[i]];
+		const struct powerpc_opcode_qt *po = &powerpc_opcodes_qt[index[i]];
 		uint64_t count = s.insn_count[index[i]];
 
 		if (!count)
