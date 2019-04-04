@@ -19,6 +19,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <lzma.h>
+#include <errno.h>
 
 #include "config.h"
 
@@ -40,6 +42,14 @@
 #define be32_to_cpup(A)	(*(uint32_t *)A)
 #define be64_to_cpup(A)	(*(uint64_t *)A)
 #endif
+
+/*
+ * Looking at parse_record the max size of a qt entry should be 33151 bytes,
+ * but round up to a bigger number in case I missed some.
+ */
+#define MAX_RECORD_LENGTH 34000
+/* 5MB seemed like a good size */
+#define BUF_SIZE (5 * 1024 * 1024)
 
 #ifdef HAVE_BFD_H
 static int qtbuild;
@@ -787,14 +797,202 @@ static void usage(void)
 	fprintf(stderr, "\t-c \t\t\tbasic block anaylsis\n");
 }
 
-int main(int argc, char *argv[])
+static bool init_decoder(lzma_stream *strm)
 {
+	lzma_ret ret = lzma_auto_decoder(
+			strm, UINT64_MAX, LZMA_CONCATENATED);
+
+	if (ret == LZMA_OK)
+		return true;
+
+	const char *msg;
+	switch (ret) {
+	case LZMA_MEM_ERROR:
+		msg = "Memory allocation failed";
+		break;
+
+	case LZMA_OPTIONS_ERROR:
+		msg = "Unsupported decompressor flags";
+		break;
+
+	default:
+		msg = "Unknown error, possibly a bug";
+		break;
+	}
+
+	fprintf(stderr, "Error initializing the decoder: %s (error code %u)\n",
+			msg, ret);
+	return false;
+}
+
+static int parse_qt_entry(void *p, unsigned long *ea) {
+
+	unsigned long x;
+	/*
+	 * We sometimes see two file headers at the start of a mambo trace, or
+	 * a header in the middle of a trace. Not sure if this is a bug, but
+	 * skip over them regardless. We identify them by a null instruction.
+	 */
+	if (!be32_to_cpup(p)) {
+		x = parse_header(p, ea);
+	} else {
+		x = parse_record(p, ea);
+	}
+	return x;
+}
+
+static int read_qt(char *file) {
+
 	int fd;
 	struct stat buf;
 	void *p;
 	unsigned long size, x;
 	unsigned long ea = 0;
 
+	fd = open(file, O_RDONLY);
+	if (fd < 0) {
+		perror("open");
+		exit(1);
+	}
+
+	if (fstat(fd, &buf)) {
+		perror("fstat");
+		exit(1);
+	}
+	size = buf.st_size;
+
+	p = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	if (p == MAP_FAILED) {
+		perror("mmap");
+		exit(1);
+	}
+
+	x = parse_header(p, &ea);
+	size -= x;
+	p += x;
+
+	if (basic_block_only)
+		bb_init();
+	while (size) {
+		x = parse_qt_entry(p, &ea);
+		size -= x;
+		p +=x;
+	}
+
+	return 0;
+}
+
+static int read_qt_xz(char *file) {
+
+	void *p;
+	unsigned long x;
+	unsigned long ea = 0;
+	int data_idx = -1, data_end = 0;
+	FILE *f = NULL;
+	uint8_t *inbuf;
+	uint8_t *outbuf;
+	unsigned char *data;
+
+	lzma_stream strm = LZMA_STREAM_INIT;
+	lzma_action action = LZMA_RUN;
+	lzma_ret ret = 0;
+
+	f = fopen(file, "r");
+	if (f == NULL) {
+		fprintf(stderr, "Error opening file: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	if (!init_decoder(&strm)) {
+		perror("failed to init decoder \n");
+		return 1;
+	}
+
+	inbuf = malloc(BUFSIZ);
+	outbuf = malloc(BUFSIZ);
+	data = malloc(BUF_SIZE);
+	if (inbuf == NULL || outbuf == NULL || data == NULL) {
+		fprintf(stderr, "Failed to allocate memory \n");
+		exit(1);
+	}
+
+	strm.next_in = NULL;
+	strm.avail_in = 0;
+	strm.next_out = outbuf;
+	strm.avail_out = BUFSIZ;
+
+	assert(BUF_SIZE > BUFSIZ);
+
+	while (ret != LZMA_STREAM_END) {
+
+		/* Fill buffer up with data */
+		while(data_idx < BUF_SIZE) {
+			/* read in data */
+			if (strm.avail_in == 0 && !feof(f)) {
+				strm.next_in = inbuf;
+				strm.avail_in = fread(inbuf, 1, BUFSIZ, f);
+
+				if (ferror(f)) {
+					fprintf(stderr, " Read error: %s\n",
+							 strerror(errno));
+					return false;
+				}
+				if (feof(f))
+					action = LZMA_FINISH;
+			}
+
+			/* decompress data */
+			ret = lzma_code(&strm, action);
+			if (ret != LZMA_OK && ret != LZMA_STREAM_END)
+				goto out;
+
+			/* move decompressed data to buf */
+			if (strm.avail_out == 0 || ret == LZMA_STREAM_END) {
+				size_t write_size = BUFSIZ - strm.avail_out;
+				memcpy(&data[data_idx + 1], outbuf, write_size );
+				data_idx += write_size;
+				strm.next_out = outbuf;
+				strm.avail_out = BUFSIZ;
+				if (ret == LZMA_STREAM_END)
+					break;
+			}
+			if (data_idx + BUFSIZ >= BUF_SIZE) {
+				break;
+			}
+		}
+		data_end = data_idx;
+		p = data;
+		data_idx = 0;
+
+		/* Process data until we potentially have less than a record left */
+		while ( (data_end - data_idx) > MAX_RECORD_LENGTH || ret == LZMA_STREAM_END) {
+			if (p == (data + data_end + 1))
+				break;;
+
+			x = parse_qt_entry(p, &ea);
+			p +=x;
+			data_idx += x;
+		}
+
+		if (p == (data + data_end +1) && ret == LZMA_STREAM_END)
+			break;
+
+		/* Move end of buffer to front */
+		memmove(&data[0], &data[data_idx], data_end - data_idx + 1);
+		data_idx = data_end - data_idx;
+	}
+out:
+	lzma_end(&strm);
+	free(inbuf);
+	free(outbuf);
+	free(data);
+	if (ret == LZMA_STREAM_END)
+		return 0;
+	return ret;
+}
+
+int main(int argc, char *argv[])
+{
 	show_stats_only = false;
 	basic_block_only = false;
 	show_imix_only = false;
@@ -862,48 +1060,21 @@ int main(int argc, char *argv[])
 		ppcstats_init(flags);
 	}
 
-	fd = open(argv[optind], O_RDONLY);
-	if (fd < 0) {
-		perror("open");
-		exit(1);
-	}
-
-	if (fstat(fd, &buf)) {
-		perror("fstat");
-		exit(1);
-	}
-	size = buf.st_size;
-
-	p = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	if (p == MAP_FAILED) {
-		perror("mmap");
-		exit(1);
-	}
-
-	x = parse_header(p, &ea);
-	size -= x;
-	p += x;
 
 	if (basic_block_only)
 		bb_init();
-	while (size) {
-		/*
-		 * We sometimes see two file headers at the start of a mambo trace, or
-		 * a header in the middle of a trace. Not sure if this is a bug, but
-		 * skip over them regardless. We identify them by a null instruction.
-		 */
-		if (!be32_to_cpup(p)) {
-			x = parse_header(p, &ea);
-			size -= x;
-			p += x;
-		}
 
-		x = parse_record(p, &ea);
-		p += x;
-		size -= x;
-	}
+	/*
+	 * Treat file as xz compressed qt, if that fails fall back to
+	 * treating it as normal qt
+	 */
+	int ret;
+	ret = read_qt_xz(argv[optind]);
 
-	    if (show_stats_only || show_imix_only)
+	if (ret)
+		read_qt(argv[optind]);
+
+	if (show_stats_only || show_imix_only)
 		ppcstats_print();
 
 	if (basic_block_only)
