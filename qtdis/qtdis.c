@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <archive.h>
 
 #include "config.h"
 
@@ -30,6 +31,14 @@
 #include <qtrace.h>
 #include <ppcstats.h>
 #include <bb.h>
+
+/*
+ * Looking at parse_record the max size of a qt entry should be 33151 bytes,
+ * but round up to a bigger number in case I missed some.
+ */
+#define MAX_RECORD_LENGTH 34000
+/* 5MB seemed like a good size */
+#define BUF_SIZE (5 * 1024 * 1024)
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define be16_to_cpup(A)	__builtin_bswap16(*(uint16_t *)(A))
@@ -787,14 +796,83 @@ static void usage(void)
 	fprintf(stderr, "\t-c \t\t\tbasic block anaylsis\n");
 }
 
-int main(int argc, char *argv[])
-{
-	int fd;
-	struct stat buf;
+static int parse_qt_entry(void *p, unsigned long *ea) {
+	unsigned long x;
+	/*
+	 * We sometimes see two file headers at the start of a mambo trace, or
+	 * a header in the middle of a trace. Not sure if this is a bug, but
+	 * skip over them regardless. We identify them by a null instruction.
+	 */
+	if (!be32_to_cpup(p))
+		x = parse_header(p, ea);
+	else
+		x = parse_record(p, ea);
+	return x;
+}
+
+static int read_qt_compressed(char *file) {
+	int r;
+	ssize_t size;
+	unsigned char *data;
 	void *p;
-	unsigned long size, x;
+	int data_idx = 0;
+	int data_end = 0;
+	int buffsize = 0;
+	unsigned long x;
 	unsigned long ea = 0;
 
+	data = malloc(BUF_SIZE);
+	if (data == NULL) {
+		fprintf(stderr, "Failed to allocate memory \n");
+		exit(1);
+	}
+
+	struct archive *a = archive_read_new();
+	struct archive_entry *ae;
+
+	archive_read_support_filter_all(a);
+	archive_read_support_format_all(a);
+	archive_read_support_format_raw(a);
+	r = archive_read_open_filename(a, file, 16384);
+	if (r != ARCHIVE_OK) {
+		fprintf(stderr, "File not ok \n");
+		return 1;
+	}
+	while (archive_read_next_header(a, &ae) == ARCHIVE_OK) {
+		buffsize = BUF_SIZE;
+		data_idx = 0;
+		for (;;) {
+			size = archive_read_data(a, &data[data_idx], buffsize - data_idx);
+			if (size < 0) {
+				fprintf(stderr, "Couldn't read data \n");
+				exit(1);
+			}
+			p = data;
+			data_end = size + data_idx - 1;
+			data_idx = 0;
+
+			/* Process data until we potentially have less than a record left */
+			while ( (data_end - data_idx) > MAX_RECORD_LENGTH || size == 0) {
+				if (p == (data + data_end + 1))
+					break;;
+
+				x = parse_qt_entry(p, &ea);
+				p += x;
+				data_idx += x;
+			}
+			if (size == 0)
+				break;
+			/* Move end of buffer to front */
+			memmove(&data[0], &data[data_idx], data_end - data_idx + 1);
+			data_idx = data_end - data_idx + 1;
+		}
+	}
+	archive_read_free(a);
+	return 0;
+}
+
+int main(int argc, char *argv[])
+{
 	show_stats_only = false;
 	basic_block_only = false;
 	show_imix_only = false;
@@ -862,48 +940,12 @@ int main(int argc, char *argv[])
 		ppcstats_init(flags);
 	}
 
-	fd = open(argv[optind], O_RDONLY);
-	if (fd < 0) {
-		perror("open");
-		exit(1);
-	}
-
-	if (fstat(fd, &buf)) {
-		perror("fstat");
-		exit(1);
-	}
-	size = buf.st_size;
-
-	p = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-	if (p == MAP_FAILED) {
-		perror("mmap");
-		exit(1);
-	}
-
-	x = parse_header(p, &ea);
-	size -= x;
-	p += x;
-
 	if (basic_block_only)
 		bb_init();
-	while (size) {
-		/*
-		 * We sometimes see two file headers at the start of a mambo trace, or
-		 * a header in the middle of a trace. Not sure if this is a bug, but
-		 * skip over them regardless. We identify them by a null instruction.
-		 */
-		if (!be32_to_cpup(p)) {
-			x = parse_header(p, &ea);
-			size -= x;
-			p += x;
-		}
 
-		x = parse_record(p, &ea);
-		p += x;
-		size -= x;
-	}
+	read_qt_compressed(argv[optind]);
 
-	    if (show_stats_only || show_imix_only)
+	if (show_stats_only || show_imix_only)
 		ppcstats_print();
 
 	if (basic_block_only)
