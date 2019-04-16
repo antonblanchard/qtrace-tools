@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <archive.h>
 
 #include <ppcstats.h>
 
@@ -62,12 +63,13 @@ static inline bool htm_bit(uint64_t value, int bit)
 
 
 struct htm_decode_state {
-	int fd;
-	uint8_t *mmap_start, *mmap_end;
+	struct archive *a;
 	uint64_t read_offset;
 	int nr, nr_rewind, error_count;
 	struct htm_decode_stat stat;
 	htm_record_fn_t fn;
+	uint64_t prev;
+	bool rewind;
 	void *private_data;
 
 	/* instruction state */
@@ -76,29 +78,30 @@ struct htm_decode_state {
 	uint64_t insn_addr;
 	uint32_t insn;
 };
-
+static int eof = 0;
 static inline int htm_read(struct htm_decode_state *state, uint8_t *buf,
 			   size_t len)
 {
-	uint8_t *m;
+	ssize_t size;
 
 	assert(len == 8);
 
-	if (!state->mmap_start) {
-		struct stat sb;
-		assert(fstat(state->fd, &sb) == 0);
-		m = mmap(NULL, sb.st_size, PROT_READ,
-			 MAP_PRIVATE | MAP_POPULATE, state->fd, 0);
-		assert(m);
-		state->mmap_start = m;
-		state->mmap_end = m + sb.st_size;
-		state->read_offset = 0;
+	if (state->rewind) {
+		*(uint64_t *)buf = state->prev;
+		state->rewind = false;
+		state->read_offset += len;
+		return 1;
 	}
-	m = state->mmap_start + state->read_offset;
-	if (m + len > state->mmap_end)
+
+	size = archive_read_data(state->a, buf, len);
+	if (size < 0)
+		return size;
+	if (eof && size == 0)
 		return 0;
-	*(uint64_t *)buf = *(uint64_t *)m; /* copy 8 bytes */
 	state->read_offset += len;
+	if (size == 0) {
+		eof = 1;
+	}
 	return 1;
 }
 
@@ -117,6 +120,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	state->read_offset -= 8;
 
 	/* rewind state info */
+	state->rewind = true;
 	state->nr_rewind = state->nr;
 	state->nr--;
 	state->stat.total_records_scanned--;
@@ -136,6 +140,7 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	int ret;
 
 	ret = htm_read(state, i.bytes, sizeof(i.bytes));
+	state->prev =  i.value;
 	if (ret <= 0) {
 		return -1;
 	}
@@ -1080,9 +1085,28 @@ int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 {
 	int ret;
 
+	struct archive *a = archive_read_new();
+	struct archive_entry *ae;
+	int r;
+
+	archive_read_support_filter_all(a);
+	archive_read_support_format_all(a);
+	archive_read_support_format_raw(a);
+	r = archive_read_open_fd(a, fd, 16384);
+	if (r != ARCHIVE_OK) {
+		fprintf(stderr, "File not ok \n");
+		return 1;
+	}
+	r = archive_read_next_header(a, &ae);
+	if (r != ARCHIVE_OK) {
+		fprintf(stderr, "File not ok \n");
+		return 1;
+	}
+
 	struct htm_decode_state state = {
-		.fd = fd,
 		.fn = fn,
+		.a = a,
+		.read_offset = 0,
 		.private_data = private_data,
 	};
 
