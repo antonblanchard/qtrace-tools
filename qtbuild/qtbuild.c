@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <config.h>
 #include <bfd.h>
 #include <dis-asm.h>
 #include <sys/mman.h>
