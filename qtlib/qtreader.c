@@ -625,17 +625,14 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		termination_code = GET8(state);
 
 		if ((termination_code == QTRACE_EXCEEDED_MAX_INST_DEPTH) ||
-		    (termination_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH))
+		    (termination_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH)) {
 			record->conditional_branch = true;
-		else if (termination_code == QTRACE_UNCONDITIONAL_BRANCH)
+		} else if (termination_code == QTRACE_UNCONDITIONAL_BRANCH) {
 			record->conditional_branch = false;
-		else {
+		} else {
 			printf("Inconsistent branch\n");
 			goto err;
 		}
-
-		if (state->flags & QTREADER_FLAGS_BRANCH)
-			annotate_branch(record);
 	}
 
 	if (flags & QTRACE_PROCESSOR_PRESENT)
@@ -676,6 +673,12 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 			record->branch_taken = true;
 		else
 			record->branch_taken = false;
+		/*
+		 * Some qtwriter/chtm qtraces don't get unconditional branches
+		 * right.
+		 */
+		if (is_unconditional_branch(record->insn))
+			record->conditional_branch = false;
 	} else if (is_conditional_branch(record->insn)) {
 		/*
 		 * Some qtraces are missing termination codes on not taken
@@ -761,6 +764,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 
 	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT)
 		SKIP(state, 1);
+
+	if (record->branch && (state->flags & QTREADER_FLAGS_BRANCH))
+		annotate_branch(record);
 
 	if (state->flags & QTREADER_FLAGS_TLBIE) {
 		if (!annotate_tlbie(state, record, &regs))
