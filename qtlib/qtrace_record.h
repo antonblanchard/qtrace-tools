@@ -14,6 +14,36 @@ enum branch_type {
 	EXCEPTION_RETURN
 };
 
+struct qtrace_register_info {
+	uint16_t index;
+	uint64_t value;
+};
+
+#define QTRACE_MAX_GPRS_OUT  32
+#define QTRACE_MAX_FPRS_OUT   3
+#define QTRACE_MAX_SPRS_OUT   4
+#define QTRACE_MAX_VMXRS_OUT  3
+#define QTRACE_MAX_VSXRS_OUT  3
+
+struct qtrace_reg_state {
+	uint8_t nr_gprs_in;
+	uint8_t nr_fprs_in;
+	uint8_t nr_vmxs_in;
+	uint8_t nr_vsxs_in;
+	uint8_t nr_sprs_in;
+	uint8_t nr_gprs_out;
+	uint8_t nr_fprs_out;
+	uint8_t nr_vmxs_out;
+	uint8_t nr_vsxs_out;
+	uint8_t nr_sprs_out;
+	struct qtrace_register_info gprs_in[QTRACE_MAX_GPRS_OUT];
+	struct qtrace_register_info gprs_out[QTRACE_MAX_GPRS_OUT];
+	struct qtrace_register_info fprs_in[QTRACE_MAX_FPRS_OUT];
+	struct qtrace_register_info fprs_out[QTRACE_MAX_FPRS_OUT];
+	struct qtrace_register_info sprs_in[QTRACE_MAX_SPRS_OUT];
+	struct qtrace_register_info sprs_out[QTRACE_MAX_SPRS_OUT];
+};
+
 struct qtrace_record {
 	uint32_t insn;
 	uint64_t insn_addr;
@@ -38,6 +68,8 @@ struct qtrace_record {
 	bool branch_taken;
 	bool branch_direct;
 	enum branch_type branch_type;
+
+	struct qtrace_reg_state regs;
 
 	bool tlbie;
 	bool tlbie_local;
