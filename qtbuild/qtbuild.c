@@ -96,9 +96,15 @@ static void build(bfd *abfd)
 		exit(1);
 	}
 
+#ifdef HAVE_BFD_SECTION_SIZE_1_ARG
+	text_size = bfd_section_size(text_section);
+	insnmap_size = bfd_section_size(insnmap_section);
+	ldstmap_size = bfd_section_size(ldstmap_section);
+#else
 	text_size = bfd_section_size(bfd, text_section);
 	insnmap_size = bfd_section_size(bfd, insnmap_section);
 	ldstmap_size = bfd_section_size(bfd, ldstmap_section);
+#endif
 
 	text_buf = malloc(text_size);
 	insnmap_buf = malloc(insnmap_size + sizeof(struct insn_map));

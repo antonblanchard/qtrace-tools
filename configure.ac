@@ -39,6 +39,19 @@ else
 	AC_DEFINE([BFD_NEW_DISASSEMBLER_ARGS], [1], [bfd library uses new disassembler args])
 fi
 
+AC_MSG_CHECKING([binutils version])
+AC_COMPILE_IFELSE(
+	[AC_LANG_SOURCE([[#include <bfd.h>
+					  #include <stdlib.h>
+					  int main(int argc, char** argv) {
+					  asection *sec = malloc(sizeof(*sec));
+					  bfd_section_size(sec);
+					  free(sec);
+					  return 0;} ]])],
+	[AC_MSG_RESULT([2.34 or higher])
+		AC_DEFINE([HAVE_BFD_SECTION_SIZE_1_ARG], [1], [version of bfd that uses 1 arg api])],
+	[AC_MSG_RESULT([2.33 or earlier])])
+
 AC_C_BIGENDIAN(dnl
 	AC_DEFINE([HAVE_BIG_ENDIAN], [1], [Big endian]),dnl
 	AC_DEFINE([HAVE_LITTLE_ENDIAN], [1], [Little endian])dnl
