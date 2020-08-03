@@ -221,6 +221,7 @@ static inline uint64_t branch_target(const unsigned int instr, unsigned long pc)
 			addr = branch_bform_target(instr);
 		if (!is_branch_absolute(pc))
 			addr += pc;
+		return addr;
 	}
 
 	return 0;
