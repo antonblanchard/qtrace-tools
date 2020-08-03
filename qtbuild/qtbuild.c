@@ -65,13 +65,13 @@ static void build(bfd *abfd)
 	asection *insnmap_section;
 	asection *ldstmap_section;
 	bfd_size_type text_size, insnmap_size, ldstmap_size;
-	bfd_size_type insnmap_idx;
 	bfd_size_type ldstmap_idx;
 	uint64_t taddr;
 	uint64_t daddr;
 	uint32_t *text_buf;
 	struct insn_map *insnmap_buf;
 	struct ldst_map *ldstmap_buf;
+	struct insn_map *imap;
 
 	if (!bfd_check_format(abfd, bfd_object)) {
 		printf("unsupported file type\n");
@@ -123,17 +123,26 @@ static void build(bfd *abfd)
 	}
 
 	taddr = 0;
-	insnmap_idx = 0;
-	if (insnmap_buf[insnmap_idx].text_addr != taddr) {
+	imap = &insnmap_buf[0];
+	if (imap->text_addr != taddr) {
 		printf("insnmap does not have initial dynamic address\n");
 		exit(1);
 	}
-	if (insnmap_buf[insnmap_idx].branch_type != BRANCH_TYPE_ABS) {
+	if (imap->branch_type != BRANCH_TYPE_ABS) {
 		printf("insnmap does not have initial absolute address\n");
 		exit(1);
 	}
-	daddr = insnmap_buf[insnmap_idx].dynamic_addr;
-	insnmap_idx++;
+	daddr = imap->dynamic_addr;
+	imap++;
+
+	if (imap->text_addr == taddr) {
+		if (imap->branch_type != BRANCH_TYPE_ABS) {
+			printf("insnmap does not have initial absolute address\n");
+			exit(1);
+		}
+		daddr = imap->dynamic_addr;
+		imap++;
+	}
 
 	ldstmap_idx = 0;
 
@@ -166,17 +175,17 @@ static void build(bfd *abfd)
 		qtr.branch = is_branch(insn);
 		qtr.conditional_branch = is_conditional_branch(insn);
 
-		if (insnmap_buf[insnmap_idx].text_addr == taddr + sizeof(uint32_t)) {
-			uint32_t btype = insnmap_buf[insnmap_idx].branch_type;
+		if (imap->text_addr == taddr + sizeof(uint32_t)) {
+			uint32_t btype = imap->branch_type;
 
 			/* Instruction just added was a taken branch */
 			if (btype == BRANCH_TYPE_ABS) {
-				daddr = insnmap_buf[insnmap_idx].dynamic_addr;
+				daddr = imap->dynamic_addr;
 #ifdef DEBUG
 				printf("  branch abs to iaddr=0x%lx", daddr);
 #endif
 			} else if (btype == BRANCH_TYPE_REL) {
-				daddr += (int64_t)insnmap_buf[insnmap_idx].dynamic_addr;
+				daddr += (int64_t)imap->dynamic_addr;
 #ifdef DEBUG
 				printf("  branch rel to iaddr=0x%lx", daddr);
 #endif
@@ -204,7 +213,7 @@ static void build(bfd *abfd)
 				exit(1);
 			}
 
-			insnmap_idx++;
+			imap++;
 		} else {
 			daddr += sizeof(uint32_t);
 		}
