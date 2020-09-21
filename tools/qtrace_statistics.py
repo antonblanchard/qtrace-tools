@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 # Parse the output of qtdis and produce some statistics
 #
@@ -111,23 +111,23 @@ class statistics:
 		if total == 0:
 			return
 
-		print "%-30s%10d" % ("total instructions", total)
-		print "%-30s%13.2f%%" % ("user", 100.0 * self.user / total)
-		print "%-30s%13.2f%%" % ("opal", 100.0 * self.opal / total)
-		print "%-30s%13.2f%%" % ("system", 100.0 * (self.system - self.idle) / total)
-		print "%-30s%13.2f%%" % ("idle", 100.0 * self.idle / total)
+		print("%-30s%10d" % ("total instructions", total))
+		print("%-30s%13.2f%%" % ("user", 100.0 * self.user / total))
+		print("%-30s%13.2f%%" % ("opal", 100.0 * self.opal / total))
+		print("%-30s%13.2f%%" % ("system", 100.0 * (self.system - self.idle) / total))
+		print("%-30s%13.2f%%" % ("idle", 100.0 * self.idle / total))
 
-		print "\n%-30s%10d" % ('Context switches', self.context_switches)
+		print("\n%-30s%10d" % ('Context switches', self.context_switches))
 
-		print "\nExceptions:"
+		print("\nExceptions:")
 
 		for (exception, count) in sorted(self.exceptions.items(), key=operator.itemgetter(1), reverse=True):
-			print "%-30s%10d" % (self.exception_lookup[exception], count)
+			print("%-30s%10d" % (self.exception_lookup[exception], count))
 
-		print "\nSystem calls:"
+		print("\nSystem calls:")
 
 		for (system_call, count) in sorted(self.system_calls.items(), key=operator.itemgetter(1), reverse=True):
-			print "%-30s%10d" % (system_call, count)
+			print("%-30s%10d" % (system_call, count))
 
 
 r_sym = re.compile("^([\dA-Fa-f]+)\s+<([\S]+)>\s+(.*)$")
@@ -138,7 +138,7 @@ if len(sys.argv) == 1:
 elif len(sys.argv) == 2:
 	f = open(sys.argv[1], 'r')
 else:
-	print "Usage: statistics.py [filename]"
+	print("Usage: statistics.py [filename]")
 	sys.exit(1)
 
 s = statistics()
@@ -159,8 +159,8 @@ for line in f:
 			function_name = ""
 			insn = m.group(2)
 		else:
-			print "ERROR parsing line"
-			print line
+			print("ERROR parsing line")
+			print(line)
 			sys.exit(1)
 
 	s.parse_one(addr, insn, function_name)
