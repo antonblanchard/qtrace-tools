@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 
-FILE *ascii_fout;
+extern FILE *ascii_fout;
 
 void ascii_open(char *filename);
 void ascii_close(void);
