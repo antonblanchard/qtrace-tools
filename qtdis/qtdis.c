@@ -22,6 +22,7 @@
 #include <archive.h>
 
 #include "config.h"
+#include "qtreader.h"
 
 #ifdef HAVE_BFD_H
 #include <bfd.h>
@@ -55,70 +56,10 @@ static int qtbuild;
 #endif
 
 static unsigned int verbose;
-static uint32_t version;
 static int dump_nr;
 static bool show_stats_only;
 static bool show_imix_only;
 static bool basic_block_only;
-
-static unsigned int get_radix_insn_ptes(uint16_t flags3)
-	{
-	unsigned int host_mode;
-	unsigned int guest_mode;
-
-	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
-
-	if (host_mode == QTRACE_XLATE_MODE_RADIX)
-		return NR_RADIX_PTES;
-
-	return 0;
-}
-
-static unsigned int get_radix_data_ptes(uint16_t flags3)
-{
-	unsigned int host_mode;
-	unsigned int guest_mode;
-
-	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_DATA_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
-			QTRACE_XLATE_MODE_MASK;
-
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
-
-	if (host_mode == QTRACE_XLATE_MODE_RADIX)
-		return NR_RADIX_PTES;
-
-	return 0;
-}
-
-static uint32_t parse_radix(void *p, unsigned int nr, uint64_t *ptes)
-{
-	unsigned long i;
-	void *q = p;
-
-	for (i = 0; i < nr; i++) {
-		ptes[i] = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	return p - q;
-}
 
 static void print_radix(unsigned int nr, uint64_t *ptes)
 {
@@ -126,119 +67,6 @@ static void print_radix(unsigned int nr, uint64_t *ptes)
 
 	for (i = 0; i < nr; i++)
 		fprintf(stdout, "0x%016lx ", ptes[i]);
-}
-
-/*
- * A header has a zero instruction, a set of record flags, and a set of file
- * header flags. Only a few of the record flags values are populated.
- */
-static unsigned long parse_header(void *p, unsigned long *iar)
-{
-	void *q = p;
-	uint32_t insn;
-	uint16_t flags = 0, flags2 = 0, flags3 = 0, hdr_flags = 0;
-
-	insn = be32_to_cpup(p);
-	p += sizeof(uint32_t);
-
-	if (insn) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (flags != QTRACE_EXTENDED_FLAGS_PRESENT) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	flags2 = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (!(flags2 & QTRACE_FILE_HEADER_PRESENT)) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	if (flags2 & ~(QTRACE_FILE_HEADER_PRESENT|QTRACE_EXTENDED_FLAGS2_PRESENT)) {
-		fprintf(stderr, "Invalid file\n");
-		exit(1);
-	}
-
-	if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
-		flags3 = be16_to_cpup(p);
-		p += sizeof(uint16_t);
-	}
-
-	hdr_flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (verbose >= 2) {
-		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x hdr_flags 0x%04x\n",
-			flags, flags2, flags3, hdr_flags);
-	}
-
-	if (flags3 & UNHANDLED_FLAGS3) {
-		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
-		exit(1);
-	}
-
-	if (hdr_flags & UNHANDLED_HDR_FLAGS) {
-		printf("Unhandled file header flags 0x%04x\n", hdr_flags & UNHANDLED_HDR_FLAGS);
-		exit(1);
-	}
-
-	if (hdr_flags & QTRACE_HDR_MAGIC_NUMBER_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_VERSION_NUMBER_PRESENT) {
-		version = be32_to_cpup(p);
-		p += sizeof(uint32_t);
-	}
-
-	if (hdr_flags & QTRACE_HDR_IAR_PRESENT) {
-		*iar = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	if (hdr_flags & QTRACE_HDR_IAR_VSID_PRESENT) {
-		p += 7;
-	}
-
-	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int nr = get_radix_insn_ptes(flags3);
-		uint64_t radix_insn_ptes[NR_RADIX_PTES];
-
-		p += parse_radix(p, nr, radix_insn_ptes);
-	}
-
-	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_IAR_PAGE_SIZE_PRESENT)
-		p += sizeof(uint8_t);
-
-	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
-		p += sizeof(uint8_t);
-
-	if (flags3 & QTRACE_PTCR_PRESENT)
-		p += sizeof(uint64_t);
-
-	if (flags3 & QTRACE_LPID_PRESENT)
-		p += sizeof(uint64_t);
-
-	if (flags3 & QTRACE_PID_PRESENT)
-		p += sizeof(uint32_t);
-
-	if (hdr_flags & QTRACE_HDR_COMMENT_PRESENT) {
-		uint16_t len = be16_to_cpup(p);
-		p += sizeof(uint16_t);
-		p += len;
-	}
-
-	return p - q;
 }
 
 static bool show_raw_insn;
@@ -449,337 +277,6 @@ out:
 }
 #endif
 
-#ifdef DEBUG
-static void dump(unsigned char *p, unsigned long len)
-{
-	unsigned long i;
-
-	for (i = 0; i < len; i++) {
-		printf("%02x ", p[i]);
-	}
-
-	printf("\n");
-}
-#else
-static void dump(unsigned char *p, unsigned long len)
-{
-}
-#endif
-
-static unsigned long parse_record(void *p, unsigned long *ea)
-{
-	uint32_t insn;
-	uint16_t flags, flags2 = 0, flags3 = 0;
-	uint64_t iar = 0;
-	uint64_t iar_rpn = 0;
-	uint64_t iar_seq_rpn = 0;
-	uint8_t iar_page_size = 0;
-	uint8_t iar_seq_page_size = 0;
-	uint64_t data_address = 0;
-	uint32_t data_rpn = 0;
-	uint8_t data_page_size = 0;
-	uint8_t node = 0;
-	uint8_t term_node = 0, term_code = 0;
-	void *q;
-	unsigned int radix_nr_data_ptes = 0;
-	uint64_t radix_insn_ptes[NR_RADIX_PTES];
-	unsigned int radix_nr_insn_ptes = 0;
-	uint64_t radix_data_ptes[NR_RADIX_PTES];
-	uint8_t length = 0;
-
-	q = p;
-
-	dump(p, 128);
-
-	insn = be32_to_cpup(p);
-	p += sizeof(uint32_t);
-
-	flags = be16_to_cpup(p);
-	p += sizeof(uint16_t);
-
-	if (flags & QTRACE_EXTENDED_FLAGS_PRESENT) {
-		flags2 = be16_to_cpup(p);
-		p += sizeof(uint16_t);
-
-		if (flags2 & QTRACE_EXTENDED_FLAGS2_PRESENT) {
-			flags3 = be16_to_cpup(p);
-			p += sizeof(uint16_t);
-		}
-	}
-
-	if (flags & UNHANDLED_FLAGS) {
-		printf("Unhandled flags 0x%04x\n", flags & UNHANDLED_FLAGS);
-		exit(1);
-	}
-
-	if (flags2 & UNHANDLED_FLAGS2) {
-		printf("Unhandled flags2 0x%04x\n", flags2 & UNHANDLED_FLAGS2);
-		exit(1);
-	}
-
-	if (flags3 & UNHANDLED_FLAGS3) {
-		printf("Unhandled flags3 0x%04x\n", flags3 & UNHANDLED_FLAGS3);
-		exit(1);
-	}
-
-	if (verbose >= 2)
-		printf("flags 0x%04x flags2 0x%04x flags3 0x%04x\n",
-			flags, flags2, flags3);
-
-	/* This bit is used on its own, no extra storage is allocated */
-	if (flags & QTRACE_IAR_CHANGE_PRESENT) {
-	}
-
-	if (flags & QTRACE_NODE_PRESENT) {
-		node = *(uint8_t *)p;
-		p += sizeof(uint8_t);
-	}
-
-	if (flags & QTRACE_TERMINATION_PRESENT) {
-		term_node = *(uint8_t *)p;
-		p += sizeof(uint8_t);
-		term_code = *(uint8_t *)p;
-		p += sizeof(uint8_t);
-	}
-
-	if (flags & QTRACE_PROCESSOR_PRESENT)
-		p += sizeof(uint8_t);
-
-	if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
-		data_address = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	if (flags & QTRACE_DATA_VSID_PRESENT) {
-		p += 7;
-	}
-
-	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-		radix_nr_data_ptes = get_radix_data_ptes(flags3);
-		p += parse_radix(p, radix_nr_data_ptes, radix_data_ptes);
-	}
-
-	if (flags & QTRACE_DATA_RPN_PRESENT) {
-		data_rpn = be32_to_cpup(p);
-		p += sizeof(uint32_t);
-	}
-
-	if (flags & QTRACE_LENGTH_PRESENT) {
-		length = *(uint8_t *)p;
-		p += sizeof(uint8_t);
-	}
-
-	if (flags & QTRACE_DATA_PRESENT) {
-		p += length;
-	}
-
-	if (flags & QTRACE_IAR_PRESENT) {
-		iar = be64_to_cpup(p);
-		p += sizeof(uint64_t);
-	}
-
-	if (flags & QTRACE_IAR_VSID_PRESENT) {
-		p += 7;
-	}
-
-	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
-		p += parse_radix(p, radix_nr_insn_ptes, radix_insn_ptes);
-	}
-
-	if (flags & QTRACE_IAR_RPN_PRESENT) {
-		iar_rpn = be32_to_cpup(p);
-		p += sizeof(uint32_t);
-	}
-
-	if (flags & QTRACE_REGISTER_TRACE_PRESENT) {
-		uint8_t gprs_in, fprs_in, vmxs_in, vsxs_in = 0, sprs_in;
-		uint8_t gprs_out, fprs_out, vmxs_out, vsxs_out = 0, sprs_out;
-
-		gprs_in = *(uint8_t *)p++;
-		fprs_in = *(uint8_t *)p++;
-		vmxs_in = *(uint8_t *)p++;
-		if (version >= 0x7000000)
-			vsxs_in = *(uint8_t *)p++;
-		sprs_in = *(uint8_t *)p++;
-
-		gprs_out = *(uint8_t *)p++;
-		fprs_out = *(uint8_t *)p++;
-		vmxs_out = *(uint8_t *)p++;
-		if (version >= 0x7000000)
-			vsxs_out = *(uint8_t *)p++;
-		sprs_out = *(uint8_t *)p++;
-
-		p += gprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += fprs_in * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += vmxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += vsxs_in * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += sprs_in * (sizeof(uint16_t) + sizeof(uint64_t));
-
-		p += gprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += fprs_out * (sizeof(uint8_t) + sizeof(uint64_t));
-		p += vmxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += vsxs_out * (sizeof(uint16_t) + sizeof(uint64_t) * 2);
-		p += sprs_out * (sizeof(uint16_t) + sizeof(uint64_t));
-	}
-
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT) {
-		iar_seq_rpn = be32_to_cpup(p);
-		p += sizeof(uint32_t);
-	}
-
-	if (flags2 & QTRACE_TRACE_ERROR_CODE_PRESENT) {
-		p += sizeof(uint8_t);
-	}
-
-	if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT) {
-		iar_seq_page_size = *(uint8_t *)p;
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT) {
-		iar_page_size = *(uint8_t *)p;
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT) {
-		data_page_size = *(uint8_t *)p;
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT) {
-		p += 1;
-	}
-
-	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT) {
-		p += 1;
-	}
-
-	switch (dump_nr) {
-	case 0:
-		break;
-	case 1:
-		fprintf(stdout, "IFTCH EA:0x%016lx", *ea);
-		if (flags & QTRACE_IAR_RPN_PRESENT)
-			fprintf(stdout, " RA:0x%016lx", (unsigned long)iar_rpn << 12);
-		if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
-			fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << iar_page_size);
-		fprintf(stdout, "\n");
-
-		if (flags & QTRACE_DATA_ADDRESS_PRESENT) {
-			fprintf(stdout, "LDST EA:0x%016lx", data_address);
-			if (flags & QTRACE_DATA_RPN_PRESENT)
-				fprintf(stdout, " RA:0x%016lx", (unsigned long)data_rpn << 12);
-			if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT)
-				fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << data_page_size);
-			fprintf(stdout, "\n");
-		}
-		break;
-	default:
-		fprintf(stdout, "Unknown dump strategy %d\n", dump_nr);
-		exit(1);
-	}
-	if (dump_nr)
-		goto next;
-
-#ifdef HAVE_BFD_H
-	if (qtbuild) {
-		static int first = 1;
-		static unsigned long last_ea;
-		static int i_num = 0;
-
-		if (first) {
-			first = 0;
-			fprintf(stdout, "#include \"qtb.h\"\n");
-			fprintf(stdout, "start_trace\t0x%016lx\n", *ea);
-		} else {
-			if (last_ea + sizeof(uint32_t) != *ea)
-				fprintf(stdout, "branch_to_abs\t0x%016lx\n", *ea);
-		}
-
-		last_ea = *ea;
-
-		if (i_num % 10 == 0)
-			fprintf(stdout, "# instruction number %d\n", i_num);
-		i_num++;
-		disasm(*ea, &insn, sizeof(insn));
-		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
-			fprintf(stdout, "\t; ldst 0x%016lx", data_address);
-	} else {
-		if (!show_stats_only && !basic_block_only && !show_imix_only) {
-			__print_address(*ea);
-			print_raw_insn(insn, sizeof(insn));
-			fprintf(stdout, "\t");
-		}
-		disasm(*ea, &insn, sizeof(insn));
-	}
-#else
-	fprintf(stdout, "%016lx", *ea);
-	print_raw_insn(insn, sizeof(insn));
-	fprintf(stdout, "\t0x%x", insn);
-#endif
-
-	if (verbose) {
-		if ((flags & (QTRACE_DATA_ADDRESS_PRESENT |
-				QTRACE_DATA_RPN_PRESENT |
-				QTRACE_IAR_RPN_PRESENT |
-				QTRACE_NODE_PRESENT |
-				QTRACE_TERMINATION_PRESENT)) ||
-		    (flags2 & (QTRACE_DATA_PAGE_SIZE_PRESENT |
-				QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT |
-				QTRACE_IAR_PAGE_SIZE_PRESENT |
-				QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)))
-			fprintf(stdout, "\t #");
-
-		if (flags & QTRACE_DATA_ADDRESS_PRESENT)
-			fprintf(stdout, " 0x%016lx", data_address);
-
-		if (flags & QTRACE_DATA_RPN_PRESENT)
-			fprintf(stdout, " DATA RPN 0x%08x", data_rpn);
-
-		if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-			fprintf(stdout, " DATA RADIX ");
-			print_radix(radix_nr_data_ptes, radix_data_ptes);
-		}
-
-		if (flags2 & QTRACE_DATA_PAGE_SIZE_PRESENT)
-			fprintf(stdout, " DATA PAGE SIZE %d", data_page_size);
-
-		if (flags & QTRACE_IAR_RPN_PRESENT)
-			fprintf(stdout, " INSN RPN 0x%08lx", iar_rpn);
-
-		if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
-			fprintf(stdout, " INSN SEQ RPN 0x%08lx", iar_seq_rpn);
-
-		if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-			fprintf(stdout, " INSN RADIX ");
-			print_radix(radix_nr_insn_ptes, radix_insn_ptes);
-		}
-
-		if (flags2 & QTRACE_IAR_PAGE_SIZE_PRESENT)
-			fprintf(stdout, " INSN PAGE SIZE %d", iar_page_size);
-
-		if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)
-			fprintf(stdout, " INSN SEQ PAGE SIZE %d", iar_seq_page_size);
-
-		if (flags & QTRACE_NODE_PRESENT)
-			fprintf(stdout, " NODE 0x%02x", node);
-
-		if (flags & QTRACE_TERMINATION_PRESENT)
-			fprintf(stdout, " TERM NODE 0x%02x TERM CODE 0x%02x", term_node, term_code);
-	}
-
-	if (!show_stats_only && !basic_block_only && !show_imix_only)
-		fprintf(stdout, "\n");
-next:
-	if (flags & QTRACE_IAR_PRESENT)
-		*ea = iar;
-	else
-		*ea += sizeof(uint32_t);
-
-	return p - q;
-}
-
 static void usage(void)
 {
 	fprintf(stderr, "Usage: qtdis [OPTION]... [FILE]\n\n");
@@ -796,78 +293,149 @@ static void usage(void)
 	fprintf(stderr, "\t-c \t\t\tbasic block anaylsis\n");
 }
 
-static int parse_qt_entry(void *p, unsigned long *ea) {
-	unsigned long x;
-	/*
-	 * We sometimes see two file headers at the start of a mambo trace, or
-	 * a header in the middle of a trace. Not sure if this is a bug, but
-	 * skip over them regardless. We identify them by a null instruction.
-	 */
-	if (!be32_to_cpup(p))
-		x = parse_header(p, ea);
-	else
-		x = parse_record(p, ea);
-	return x;
+void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
+		     unsigned long ea)
+{
+	switch (dump_nr) {
+	case 0:
+		break;
+	case 1:
+		fprintf(stdout, "IFTCH EA:0x%016lx", ea);
+		if (state->next_insn_rpn_valid)
+			fprintf(stdout, " RA:0x%016lx", (unsigned long)state->next_insn_rpn << 12);
+		if (state->next_insn_page_shift_valid)
+			fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << state->next_insn_page_shift);
+		fprintf(stdout, "\n");
+
+		if (rec->data_addr_valid) {
+			fprintf(stdout, "LDST EA:0x%016lx", rec->data_addr);
+			if (state->data_rpn_valid)
+				fprintf(stdout, " RA:0x%016lx", (unsigned long)state->data_rpn << 12);
+			if (rec->data_page_shift_valid)
+				fprintf(stdout, " PAGE_SIZE:0x%lx", 1UL << rec->data_page_shift);
+			fprintf(stdout, "\n");
+		}
+		break;
+	default:
+		fprintf(stdout, "Unknown dump strategy %d\n", dump_nr);
+		exit(1);
+	}
+	if (dump_nr)
+		return;
+
+#ifdef HAVE_BFD_H
+	if (qtbuild) {
+		static int first = 1;
+		static unsigned long last_ea;
+		static int i_num = 0;
+
+		if (first) {
+			first = 0;
+			fprintf(stdout, "#include \"qtb.h\"\n");
+			fprintf(stdout, "start_trace\t0x%016lx\n", ea);
+		} else {
+			if (last_ea + sizeof(uint32_t) != ea)
+				fprintf(stdout, "branch_to_abs\t0x%016lx\n", ea);
+		}
+
+		last_ea = ea;
+
+		if (i_num % 10 == 0)
+			fprintf(stdout, "# instruction number %d\n", i_num);
+		i_num++;
+		disasm(ea, &rec->insn, sizeof(rec->insn));
+		if (rec->data_addr_valid)
+			fprintf(stdout, "\t; ldst 0x%016lx", rec->data_addr);
+	} else {
+		if (!show_stats_only && !basic_block_only && !show_imix_only) {
+			__print_address(ea);
+			print_raw_insn(rec->insn, sizeof(rec->insn));
+			fprintf(stdout, "\t");
+		}
+		disasm(ea, &rec->insn, sizeof(rec->insn));
+	}
+#else
+	fprintf(stdout, "%016lx", ea);
+	print_raw_insn(rec->insn, sizeof(rec->insn));
+	fprintf(stdout, "\t0x%x", rec->insn);
+#endif
+	if (verbose) {
+		if (rec->data_addr_valid || state->data_rpn_valid ||
+		    state->next_insn_rpn_valid || rec->node_valid ||
+		    rec->branch || rec->data_page_shift_valid ||
+		    state->next_insn_rpn_valid || state->next_insn_page_shift_valid)
+			fprintf(stdout, "\t #");
+
+		if (rec->data_addr_valid)
+			fprintf(stdout, " 0x%016lx", rec->data_addr);
+
+		if (state->data_rpn_valid)
+			fprintf(stdout, " DATA RPN 0x%08x", state->data_rpn);
+
+		if (state->radix_nr_data_ptes) {
+			fprintf(stdout, " DATA RADIX ");
+			print_radix(state->radix_nr_data_ptes, state->radix_data_ptes);
+		}
+
+		if (rec->data_page_shift_valid)
+			fprintf(stdout, " DATA PAGE SIZE %d", rec->data_page_shift);
+
+		if (state->next_insn_rpn_valid)
+			fprintf(stdout, " INSN RPN 0x%08x", state->next_insn_rpn);
+
+		// TODO: qtreader does not separate from QTRACE_IAR_RPN_PRESENT
+		//if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
+		//	fprintf(stdout, " INSN SEQ RPN 0x%08lx", iar_seq_rpn);
+
+		if (state->next_insn_rpn_valid && state->radix_nr_insn_ptes) {
+			fprintf(stdout, " INSN RADIX ");
+			print_radix(state->radix_nr_insn_ptes, state->radix_insn_ptes);
+		}
+
+		if (state->next_insn_page_shift_valid)
+			fprintf(stdout, " INSN PAGE SIZE %d", state->next_insn_page_shift);
+
+		// TODO: qtreader does not separate from QTRACE_IAR_PAGE_SIZE_PRESENT
+		//if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_PAGE_SIZE_PRESENT)
+		//	fprintf(stdout, " INSN SEQ PAGE SIZE %d", iar_seq_page_size);
+
+		if (rec->node_valid)
+			fprintf(stdout, " NODE 0x%02x", rec->node);
+
+		if (rec->branch)
+			fprintf(stdout, " TERM NODE 0x%02x TERM CODE 0x%02x", rec->term_node, rec->term_code);
+	}
+
+	if (!show_stats_only && !basic_block_only && !show_imix_only)
+		fprintf(stdout, "\n");
+
+	return;
 }
 
-static int read_qt_compressed(char *file) {
-	int r;
-	ssize_t size;
-	unsigned char *data;
-	void *p;
-	int data_idx = 0;
-	int data_end = 0;
-	int buffsize = 0;
-	unsigned long x;
+static int read_qt(char *file)
+{
+	struct qtreader_state state;
+	struct qtrace_record rec;
 	unsigned long ea = 0;
+	int fd;
 
-	data = malloc(BUF_SIZE);
-	if (data == NULL) {
-		fprintf(stderr, "Failed to allocate memory \n");
+	fd = open(file, O_RDONLY);
+	if (fd < 0) {
+		perror("open");
 		exit(1);
 	}
 
-	struct archive *a = archive_read_new();
-	struct archive_entry *ae;
-
-	archive_read_support_filter_all(a);
-	archive_read_support_format_all(a);
-	archive_read_support_format_raw(a);
-	r = archive_read_open_filename(a, file, 16384);
-	if (r != ARCHIVE_OK) {
-		fprintf(stderr, "File not ok \n");
-		return 1;
+	if (qtreader_initialize_fd(&state, fd, 0) == false) {
+		fprintf(stderr, "qtreader_initialize_fd failed\n");
+		exit(1);
 	}
-	while (archive_read_next_header(a, &ae) == ARCHIVE_OK) {
-		buffsize = BUF_SIZE;
-		data_idx = 0;
-		for (;;) {
-			size = archive_read_data(a, &data[data_idx], buffsize - data_idx);
-			if (size < 0) {
-				fprintf(stderr, "Couldn't read data \n");
-				exit(1);
-			}
-			p = data;
-			data_end = size + data_idx - 1;
-			data_idx = 0;
 
-			/* Process data until we potentially have less than a record left */
-			while ( (data_end - data_idx) > MAX_RECORD_LENGTH || size == 0) {
-				if (p == (data + data_end + 1))
-					break;;
-
-				x = parse_qt_entry(p, &ea);
-				p += x;
-				data_idx += x;
-			}
-			if (size == 0)
-				break;
-			/* Move end of buffer to front */
-			memmove(&data[0], &data[data_idx], data_end - data_idx + 1);
-			data_idx = data_end - data_idx + 1;
-		}
+	ea = state.next_insn_addr;
+	while (qtreader_next_record(&state, &rec) == true) {
+		print_qt_record(&state, &rec, ea);
+		ea = state.next_insn_addr;
 	}
-	archive_read_free(a);
+
 	return 0;
 }
 
@@ -943,7 +511,7 @@ int main(int argc, char *argv[])
 	if (basic_block_only)
 		bb_init();
 
-	read_qt_compressed(argv[optind]);
+	read_qt(argv[optind]);
 
 	if (show_stats_only || show_imix_only)
 		ppcstats_print();
