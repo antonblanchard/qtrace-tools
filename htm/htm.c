@@ -15,6 +15,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <archive.h>
+#include <string.h>
 
 #include <ppcstats.h>
 
@@ -1411,6 +1412,7 @@ done:
 	state->prev_insn_branch = insn.info.branch;
 
 	rec.type = HTM_RECORD_INSN;
+	rec.insn.insn = insn.info.prefix ? insn.prefix.prefix : state->insn;
 	rec.insn.insn_addr = state->insn_addr;
 	rec.insn.branch = insn.info.branch;
 	rec.insn.conditional_branch = is_conditional_branch(rec.insn.insn);
@@ -1451,6 +1453,15 @@ done:
 	if (state->fn && state->private_data)
 		state->fn(&rec, state->private_data);
 
+	if (insn.info.prefix) {
+		memset(&rec, 0, sizeof(rec));
+		rec.type = HTM_RECORD_INSN;
+		rec.insn.insn = state->insn;
+		rec.insn.insn_addr = state->insn_addr + 4;
+
+		if (state->fn && state->private_data)
+			state->fn(&rec, state->private_data);
+	}
 
 	return 0;
 

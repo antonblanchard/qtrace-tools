@@ -27,6 +27,8 @@ struct qtreader_state {
 	unsigned int verbose;
 	int fd;
 	uint64_t flags;
+	bool prefixed;
+	uint32_t suffix;
 
 	bool insn_rpn_valid;
 	uint32_t insn_rpn;

@@ -71,12 +71,12 @@ static void print_radix(unsigned int nr, uint64_t *ptes)
 
 static bool show_raw_insn;
 
-static void print_raw_insn(uint32_t insn, unsigned int len)
+static void print_raw_insn(uint32_t *insn, unsigned int len)
 {
 	unsigned int i;
 
 	if (show_raw_insn) {
-		uint8_t *p = (uint8_t *)(uint32_t *)&insn;
+		uint8_t *p = (uint8_t *)insn;
 
 		fprintf(stdout, "\t");
 		for (i = 0; i < len; i++)
@@ -241,7 +241,7 @@ void disasm(unsigned long ea, uint32_t *buf, unsigned long bufsize)
 #endif
 
 		init_disassemble_info(&info, stdout, (fprintf_ftype)fprintf);
-		info.disassembler_options = "power9";
+		info.disassembler_options = "power10";
 		info.print_address_func = print_address;
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 		info.endian = BFD_ENDIAN_LITTLE;
@@ -296,6 +296,14 @@ static void usage(void)
 void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 		     unsigned long ea)
 {
+	unsigned int buf[2];
+	unsigned int buflen = sizeof(unsigned int);
+
+	buf[0] = rec->insn;
+	if (state->prefixed) {
+		buf[1] = state->suffix;
+		buflen = sizeof(unsigned int) * 2;
+	}
 	switch (dump_nr) {
 	case 0:
 		break;
@@ -343,21 +351,25 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 		if (i_num % 10 == 0)
 			fprintf(stdout, "# instruction number %d\n", i_num);
 		i_num++;
-		disasm(ea, &rec->insn, sizeof(rec->insn));
+		disasm(ea, buf, buflen);
 		if (rec->data_addr_valid)
 			fprintf(stdout, "\t; ldst 0x%016lx", rec->data_addr);
 	} else {
 		if (!show_stats_only && !basic_block_only && !show_imix_only) {
 			__print_address(ea);
-			print_raw_insn(rec->insn, sizeof(rec->insn));
+			print_raw_insn(buf, buflen);
 			fprintf(stdout, "\t");
 		}
-		disasm(ea, &rec->insn, sizeof(rec->insn));
+		disasm(ea, buf, buflen);
 	}
 #else
 	fprintf(stdout, "%016lx", ea);
-	print_raw_insn(rec->insn, sizeof(rec->insn));
-	fprintf(stdout, "\t0x%x", rec->insn);
+	print_raw_insn(buf, buflen);
+	if (!state->prefixed) {
+		fprintf(stdout, "\t0x%x", rec->insn);
+	} else {
+		fprintf(stdout, "\t0x%x 0x%x", rec->insn, state->suffix);
+	}
 #endif
 	if (verbose) {
 		if (rec->data_addr_valid || state->data_rpn_valid ||
@@ -414,8 +426,8 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 
 static int read_qt(char *file)
 {
-	struct qtreader_state state;
-	struct qtrace_record rec;
+	struct qtreader_state state, prev_state;
+	struct qtrace_record rec, prev_rec;
 	unsigned long ea = 0;
 	int fd;
 
@@ -432,8 +444,16 @@ static int read_qt(char *file)
 
 	ea = state.next_insn_addr;
 	while (qtreader_next_record(&state, &rec) == true) {
-		print_qt_record(&state, &rec, ea);
-		ea = state.next_insn_addr;
+		if (!state.prefixed) {
+			print_qt_record(&state, &rec, ea);
+			ea = state.next_insn_addr;
+		} else {
+			memcpy(&prev_state, &state, sizeof(state));
+			memcpy(&prev_rec, &rec, sizeof(rec));
+			qtreader_next_record(&state, &rec);
+			print_qt_record(&prev_state, &prev_rec, ea);
+			ea = state.next_insn_addr;
+		}
 	}
 
 	return 0;

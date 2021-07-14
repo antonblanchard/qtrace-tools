@@ -519,8 +519,10 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	/*
 	 * We sometimes see header records in the middle of a trace, which are
 	 * identified by a null instruction. Skip over them.
+	 * Suffixes of prefixed instructions come as seperate records and can
+	 * be null.
 	 */
-	while (be32_to_cpup(state->ptr) == 0) {
+	while (be32_to_cpup(state->ptr) == 0 && !state->prefixed) {
 		if (qtreader_parse_header(state) == false)
 			goto err;
 	}
@@ -563,6 +565,11 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	}
 
 	record->insn = GET32(state);
+
+	if (state->prefixed)
+		state->suffix = record->insn;
+
+	state->prefixed = ((record->insn >> 26) == 1);
 
 	flags = GET16(state);
 
