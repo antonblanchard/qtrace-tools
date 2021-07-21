@@ -15,12 +15,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <archive.h>
+#include <string.h>
 
 #include <ppcstats.h>
 
 #include "htm.h"
 #include "tlb.h"
 #include "bb.h"
+#include "branch.h"
 
 #define HTM_STAMP_RECORD	0xACEFF0
 #define HTM_STAMP_COMPLETE	0xACEFF1
@@ -29,11 +31,31 @@
 #define HTM_STAMP_SYNC		0xACEFF4
 #define HTM_STAMP_TIME		0xACEFF8
 
+#define REC_TYPE_XLATE		1
+#define REC_TYPE_INST		2
+#define REC_TYPE_IEARA		3
+
 static inline unsigned int htm_uint32(uint64_t value)
 {
 	assert(value <= UINT32_MAX);
 
 	return (unsigned int)(value & UINT32_MAX);
+}
+
+/* Big-endian format, 0-msb, 31-lsb */
+static inline uint32_t htm_bits_32(uint32_t value, int start, int end)
+{
+	uint32_t mask;
+	int nbits;
+
+	assert(start >= 0 && start <= 31);
+	assert(end >= 0 && end <= 31);
+	assert(start <= end);
+
+	nbits = end - start + 1;
+
+	mask = ~(UINT32_MAX << nbits) << (31 - end);
+	return (value & mask) >> (31 - end);
 }
 
 /* Big-endian format, 0-msb, 63-lsb */
@@ -76,7 +98,11 @@ struct htm_decode_state {
 	uint64_t prev_addr;
 	bool prev_insn_branch;
 	uint64_t insn_addr;
+	uint64_t insn_real_addr;
 	uint32_t insn;
+
+	unsigned int insn_page_size;
+	unsigned int data_page_size;
 };
 static int eof = 0;
 static inline int htm_read(struct htm_decode_state *state, uint8_t *buf,
@@ -129,7 +155,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	state->stat.checksum -= (word1 + word2);
 }
 
-static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
+static int htm_decode_fetch_internal(struct htm_decode_state *state, uint64_t *value)
 {
 	uint64_t v;
 	union {
@@ -159,6 +185,31 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	state->stat.checksum += (word1 + word2);
 
 	return 0;
+}
+
+static int htm_decode_stamp(struct htm_decode_state *state,
+			    uint64_t value);
+
+/*
+ * On P10 timestamp records may come at any time, just skip them.
+ */
+static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
+{
+	uint64_t v;
+	int r;
+
+	*value = 0;
+	r = htm_decode_fetch_internal(state, &v);
+	if (r)
+		return r;
+	if (htm_bits(v, 0, 19) == 0xaceff) {
+		r = htm_decode_stamp(state, v);
+		if (r)
+			return r;
+		r = htm_decode_fetch_internal(state, &v);
+	}
+	*value = v;
+	return r;
 }
 
 static int htm_decode_record(struct htm_decode_state *state,
@@ -310,6 +361,16 @@ struct htm_insn_info {
 	bool software_tlb;
 };
 
+struct htm_insn_info_p10 {
+	unsigned int opcode;
+	bool branch;
+	bool prefix;
+	int dea;
+	int dra;
+	bool esid;
+	unsigned int eabits;
+};
+
 struct htm_insn_iea {
 	uint64_t address;
 	bool msrhv;
@@ -332,6 +393,10 @@ struct htm_insn_dra {
 	bool dh;
 };
 
+struct htm_insn_dra_p10 {
+	uint64_t page_address;
+};
+
 struct htm_insn_esid {
 	uint64_t esid;
 };
@@ -347,6 +412,48 @@ struct htm_insn_vsid {
 	unsigned int lp;
 };
 
+struct htm_insn_ieara {
+	bool valid;
+	uint64_t address;
+	uint64_t real_address;
+};
+
+struct htm_insn_msr {
+	bool msrhv;
+	bool msrpr;
+	bool msrir;
+	bool msrdr;
+	bool msree;
+	bool msrs;
+	unsigned int msrts;
+	bool msrle;
+	bool msrsf;
+};
+
+struct htm_insn_walk {
+	bool final_ra;
+	bool exception;
+	bool guest_pte;
+	bool host_ra;
+	bool final_record;
+	unsigned int level;
+	unsigned int page_size;
+	uint64_t ra_address;
+};
+
+
+struct htm_insn_xlate {
+	bool d_side;
+	unsigned int lpid;
+	unsigned int pid;
+	int walk_cnt;
+	struct htm_insn_walk walks[37];
+};
+
+struct htm_insn_prefix {
+	unsigned int prefix;
+};
+
 struct htm_insn {
 	struct htm_insn_info info;
 	struct htm_insn_iea iea;
@@ -356,6 +463,198 @@ struct htm_insn {
 	struct htm_insn_esid esid;
 	struct htm_insn_vsid vsid;
 };
+
+struct htm_insn_p10 {
+	struct htm_insn_ieara ieara;
+	struct htm_insn_info_p10 info;
+	struct htm_insn_msr msr;
+	struct htm_insn_dea dea[2];
+	struct htm_insn_dra_p10 dra[2];
+	struct htm_insn_esid esid;
+	struct htm_insn_vsid vsid;
+	struct htm_insn_xlate xlates[3];
+	struct htm_insn_prefix prefix;
+};
+
+static int htm_get_rec_type(uint64_t value)
+{
+	unsigned int tag;
+
+	tag = htm_uint32(htm_bits(value, 36, 55));
+	if (tag != 0xABCDF) {
+		return 0;
+	}
+
+	return htm_bits(value, 34, 35);
+}
+
+static int htm_decode_insn_ieara(struct htm_decode_state *state,
+				 uint64_t value,
+				 struct htm_insn_ieara *rec)
+{
+	int ret;
+
+	ret = htm_decode_fetch(state, &value);
+	if (ret < 0)
+		return -1;
+	rec->address = htm_bits(value, 0, 56) << 7;
+
+	ret = htm_decode_fetch(state, &value);
+	if (ret < 0)
+		return -1;
+	rec->real_address = htm_bits(value, 0, 39) << 12;
+	rec->valid = true;
+
+	return 0;
+}
+
+static int htm_decode_insn_info_p10(struct htm_decode_state *state,
+				    uint64_t value,
+				    struct htm_insn_info_p10 *rec)
+{
+	unsigned int tag;
+
+	tag = htm_uint32(htm_bits(value, 36, 55));
+	if (tag != 0xABCDF) {
+		return -1;
+	}
+
+	if (htm_bits(value, 34, 35) != REC_TYPE_INST) {
+		return -1;
+	}
+
+	rec->opcode = htm_uint32(htm_bits(value, 0, 31));
+
+	rec->branch = htm_bit(value, 32);
+	rec->prefix = htm_bit(value, 33);
+	rec->eabits = htm_uint32(htm_bits(value, 56, 61)) << 2;
+	switch (htm_bits(value, 62, 63)) {
+	case 1:
+		rec->dea = 1;
+		rec->dra = 1;
+		break;
+	case 2:
+		rec->dea = 2;
+		rec->dra = 2;
+		break;
+	case 3:
+		rec->dea = 1;
+		rec->dra = 1;
+		rec->esid = true;
+		break;
+	}
+
+	return 0;
+}
+
+static int htm_decode_insn_msr(struct htm_decode_state *state,
+			       uint64_t value,
+			       struct htm_insn_msr *msr)
+{
+	msr->msrhv = htm_bit(value, 0);
+	msr->msrpr = htm_bit(value, 1);
+	msr->msrir = htm_bit(value, 2);
+	msr->msrdr = htm_bit(value, 3);
+	msr->msree = htm_bit(value, 4);
+	msr->msrs = htm_bit(value, 5);
+	msr->msrts = htm_uint32(htm_bits(value, 6, 7));
+	msr->msrle = htm_bit(value, 8);
+	msr->msrsf = htm_bit(value, 9);
+
+	return 0;
+}
+
+static int htm_decode_insn_xlate(struct htm_decode_state *state,
+				 uint64_t value,
+				 struct htm_insn_xlate *xlate)
+{
+	int i, ret;
+	unsigned int tag;
+
+	tag = htm_uint32(htm_bits(value, 36, 55));
+	if (tag != 0xABCDF) {
+		return -1;
+	}
+
+	if (htm_bits(value, 34, 35) != REC_TYPE_XLATE) {
+		return -1;
+	}
+
+	xlate->d_side = htm_bit(value, 0);
+	xlate->lpid = htm_uint32(htm_bits(value, 1, 12));
+	xlate->pid = htm_uint32(htm_bits(value, 13, 32));
+
+	for (i = 0; i < 37; i++) {
+		ret = htm_decode_fetch(state, &value);
+		if (ret < 0) {
+			return -1;
+		}
+		xlate->walks[i].final_ra = htm_bit(value, 0);
+		xlate->walks[i].exception = htm_bit(value, 1);
+		xlate->walks[i].guest_pte = htm_bit(value, 2);
+		xlate->walks[i].host_ra = htm_bit(value, 3);
+		xlate->walks[i].final_record = htm_bit(value, 7);
+		xlate->walks[i].level = htm_uint32(htm_bits(value, 4, 6));
+
+		switch (xlate->walks[i].level) {
+		case 0:
+			xlate->walks[i].page_size = 12;
+			if (xlate->d_side)
+				state->stat.total_instruction_pages_4k++;
+			else
+				state->stat.total_data_pages_4k++;
+			break;
+		case 1:
+			xlate->walks[i].page_size = 16;
+			if (xlate->d_side)
+				state->stat.total_instruction_pages_64k++;
+			else
+				state->stat.total_data_pages_64k++;
+			break;
+		case 2:
+			xlate->walks[i].page_size = 21;
+			break;
+		case 3:
+			xlate->walks[i].page_size = 24;
+			break;
+		case 4:
+			xlate->walks[i].page_size = 30;
+			break;
+		case 6:
+			xlate->walks[i].page_size = 40;
+			break;
+		}
+
+		xlate->walks[i].ra_address = htm_bits(value, 8, 60) << 3;
+
+		if (xlate->walks[i].final_record) {
+			break;
+		}
+	}
+
+	if (i == 37) {
+		return -1;
+	}
+
+	xlate->walk_cnt = i - 1;
+
+	if (xlate->d_side) {
+		state->data_page_size = xlate->walks[xlate->walk_cnt].page_size;
+	} else {
+		state->insn_page_size = xlate->walks[xlate->walk_cnt].page_size;
+	}
+
+	return 0;
+}
+
+static int htm_decode_insn_prefix(struct htm_decode_state *state,
+				  uint64_t value,
+				  struct htm_insn_prefix *rec)
+{
+	rec->prefix = htm_uint32(htm_bits(value, 0, 31));
+
+	return 0;
+}
 
 static int htm_decode_insn_info(struct htm_decode_state *state,
 				uint64_t value,
@@ -461,6 +760,15 @@ static int htm_decode_insn_ira(struct htm_decode_state *state,
 	return 0;
 }
 
+static int htm_decode_insn_dea_p10(struct htm_decode_state *state,
+				   uint64_t value,
+				   struct htm_insn_dea *rec)
+{
+	rec->address = value;
+
+	return 0;
+}
+
 static int htm_decode_insn_dea(struct htm_decode_state *state,
 			       uint64_t value,
 			       struct htm_insn_dea *rec)
@@ -530,6 +838,18 @@ static int htm_decode_insn_dra(struct htm_decode_state *state,
 	return 0;
 }
 
+static int htm_decode_insn_dra_p10(struct htm_decode_state *state,
+				   uint64_t value,
+				   struct htm_insn_dra_p10 *rec)
+{
+	uint64_t address;
+
+	address = htm_bits(value, 0, 40) << 12;
+	rec->page_address = address;
+
+	return 0;
+}
+
 static int htm_decode_insn_esid(struct htm_decode_state *state,
 				uint64_t value,
 				struct htm_insn_esid *rec)
@@ -576,6 +896,164 @@ static int htm_decode_insn_vsid(struct htm_decode_state *state,
 		  htm_uint32(htm_bits(value, 58, 59));
 
 	return 0;
+}
+
+static unsigned int htm_insn_type(uint64_t value)
+{
+	unsigned int tag;
+
+	tag = htm_uint32(htm_bits(value, 36, 55));
+
+	return tag;
+}
+
+#define MAJOR_OPCODE(insn)	(((insn) >> 26) & 0x3f)
+#define MINOR_OPCODE(insn)	(((insn) >> 1) & 0x1f)
+
+#define PPC32_BIT(x) (31 - x)
+
+/*
+ * Based on the Branch Recoding described in the POWER10 Processor
+ * Specification.
+ */
+static uint32_t insn_recode_p10(uint32_t opcode, uint64_t iea)
+{
+	uint32_t ppc_opcode = 0;
+	uint32_t branch_type;
+	uint32_t msb_mode;
+	unsigned int link_bit;
+	uint64_t target_ea = 0;
+	unsigned int bo;
+	unsigned int bi;
+	unsigned int bh;
+
+	msb_mode = htm_bits_32(opcode, 2, 3);
+	branch_type = htm_bits_32(opcode, 11, 12);
+
+	link_bit = htm_bits_32(opcode, 1, 1);
+
+	switch (branch_type) {
+	case 0: /* I - Form  */
+		if (msb_mode == 2) {
+
+			target_ea = (htm_bits_32(opcode, 4, 10) << 17 |
+				     htm_bits_32(opcode, 15, 31)) << 2;
+			ppc_opcode = 0x48000000 | target_ea | 0x2;
+		} else {
+			uint64_t target_ea = 0;
+			uint64_t instr_ea_msb = iea >> 26;
+			uint64_t disp;
+
+			switch (msb_mode) {
+			case 0:
+				target_ea = (instr_ea_msb << 26);
+				break;
+			case 1:
+				target_ea = ((instr_ea_msb+1) << 26);
+				break;
+
+			case 3:
+				target_ea = ((instr_ea_msb-1) << 26);
+				break;
+
+			}
+
+			target_ea |= (htm_bits_32(opcode, 4, 10) << 17 |
+				      htm_bits_32(opcode, 15, 31)) << 2;
+			disp = target_ea - iea;
+			ppc_opcode = 0x48000000 | (disp & 0x03fffffc) | link_bit;
+		}
+		break;
+	case 1: /* B - Form */
+		if (msb_mode == 2) {
+			bo = htm_bits_32(opcode, 5, 8) << 1;
+			bo |= htm_bits_32(opcode, 13, 13);
+			bi = (htm_bits_32(opcode, 10, 10) << 5) |
+			     htm_bits_32(opcode, 15, 18);
+
+			target_ea = (htm_bits_32(opcode, 4, 4) << 13 |
+				    htm_bits_32(opcode, 19, 31)) << 2;
+			ppc_opcode = 0x40000000 | 0x2 | target_ea |
+				     bo << PPC32_BIT(10) | bi << PPC32_BIT(15) |
+				     link_bit;
+		} else {
+			uint64_t instr_ea_msb = iea >> 16;
+			uint64_t disp;
+
+			bo = htm_bits_32(opcode, 5, 8) << 1;
+			bo |= htm_bits_32(opcode, 13, 13);
+			bi = (htm_bits_32(opcode, 10, 10) << 4) |
+			     htm_bits_32(opcode, 15, 18);
+
+			switch (msb_mode) {
+			case 0:
+				target_ea = (instr_ea_msb << 16);
+				break;
+			case 1:
+				target_ea = ((instr_ea_msb+1) << 16);
+				break;
+			case 3:
+				target_ea = ((instr_ea_msb-1) << 16);
+				break;
+			}
+
+			target_ea |= (htm_bits_32(opcode, 4, 4) << 13 |
+				    htm_bits_32(opcode, 19, 31)) << 2;
+			disp = target_ea - iea;
+			ppc_opcode = 0x40000000 | (disp & 0x0000fffc) |
+				     bo << PPC32_BIT(10) | bi << PPC32_BIT(15) |
+				     link_bit;
+		}
+		break;
+	case 2: /* bclr */
+		bo = htm_bits_32(opcode, 5, 8) << 1;
+		if (bo & 2) // hint bit
+			bo |= htm_bits_32(opcode, 13, 13);
+		bi = (htm_bits_32(opcode, 10, 10) << 4) |
+		     htm_bits_32(opcode, 15, 18);
+		bh = htm_bits_32(opcode, 21, 22);
+
+		ppc_opcode = 0x4c000020 | bo << PPC32_BIT(10) | bi << PPC32_BIT(15) |
+			     bh << PPC32_BIT(20) | link_bit;
+
+		break;
+	case 3: /* bcctr, bctar, stop instructions */
+		bo = htm_bits_32(opcode, 5, 8) << 1;
+		if (bo & 2) // hint bit
+			bo |= htm_bits_32(opcode, 13, 13);
+		bi = (htm_bits_32(opcode, 10, 10) << 4) |
+		     htm_bits_32(opcode, 15, 18);
+		bh = htm_bits_32(opcode, 21, 22);
+
+		switch (MAJOR_OPCODE(opcode)) {
+		case 17: /* sc */
+			ppc_opcode = opcode & ~0x1e0000;
+			break;
+		case 19:
+			switch (MINOR_OPCODE(opcode)) {
+			case 82: /* rfscv */
+			case 18: /* rfid */
+			case 274: /* hrfid */
+			case 370: /* stop */
+			case 146: /* rfebb */
+				ppc_opcode = opcode & ~0x1e0000;
+				break;
+			}
+			break;
+		case 31: /* mtmsr, mtmsrd */
+			ppc_opcode = opcode & ~0x1e0000;
+			break;
+		default:
+			ppc_opcode = 0x4c000420 | bo << PPC32_BIT(10) | bi << PPC32_BIT(15) |
+				     bh << PPC32_BIT(20) | link_bit;
+			if (opcode & (1ul << PPC32_BIT(20))) {
+				ppc_opcode |= 0x00000040;
+			}
+			break;
+		}
+		break;
+	}
+	return ppc_opcode;
 }
 
 static uint32_t insn_recode(unsigned int predecode, uint32_t opcode, uint64_t iea)
@@ -627,7 +1105,6 @@ static uint32_t insn_recode(unsigned int predecode, uint32_t opcode, uint64_t ie
 				break;
 
 			}
-
 			disp = target_ea - iea;
 			ppc_opcode = 0x48000000 | (disp & 0x03fffffc) | (opcode & 0x1);
 		}
@@ -709,8 +1186,18 @@ static int insn_demunge(uint32_t opcode, uint64_t iea, uint32_t *insn)
 	return 0;
 }
 
-#define MAJOR_OPCODE(insn)	(((insn) >> 26) & 0x3f)
-#define MINOR_OPCODE(insn)	(((insn) >> 1) & 0x1f)
+static int insn_demunge_p10(uint32_t opcode, uint64_t iea, uint32_t *insn)
+{
+	uint32_t ppc_opcode;
+
+	ppc_opcode = insn_recode_p10(opcode, iea);
+	if (ppc_opcode == 0xffffffff) {
+		return -1;
+	}
+
+	*insn = ppc_opcode;
+	return 0;
+}
 
 #define IS_ISEL(insn)	((MAJOR_OPCODE(insn) == 31) && (MINOR_OPCODE(insn) == 15))
 #define IS_BLR(insn)	((MAJOR_OPCODE(insn) == 19) && (MINOR_OPCODE(insn) == 16))
@@ -754,6 +1241,232 @@ static unsigned int pagesize_to_shift(uint64_t size)
 		return 24;
 	assert(1);
 	return 0;
+}
+
+static int htm_decode_insn_p10(struct htm_decode_state *state,
+			   uint64_t value)
+{
+	struct htm_insn_p10 insn = { { 0 } };
+	struct htm_record rec;
+	int xlate_cnt = 0;
+	int optype;
+	int ret;
+
+	state->stat.total_records_processed++;
+	state->stat.total_instruction_scanned++;
+
+	while ((htm_get_rec_type(value) == REC_TYPE_IEARA) ||
+		((htm_get_rec_type(value) == REC_TYPE_XLATE) && (xlate_cnt < 3))) {
+		if (htm_get_rec_type(value) == REC_TYPE_XLATE) {
+			ret = htm_decode_insn_xlate(state, value, &insn.xlates[xlate_cnt]);
+			if (ret < 0) {
+				goto fail;
+			}
+
+			ret = htm_decode_fetch(state, &value);
+			if (ret < 0) {
+				goto fail;
+			}
+			xlate_cnt++;
+		}
+		if (htm_get_rec_type(value) == REC_TYPE_IEARA) {
+			ret = htm_decode_insn_ieara(state, value, &insn.ieara);
+			if (ret < 0) {
+				goto fail;
+			}
+			ret = htm_decode_fetch(state, &value);
+			if (ret < 0) {
+				goto fail;
+			}
+		}
+	}
+
+	ret = htm_decode_insn_info_p10(state, value, &insn.info);
+	if (ret < 0) {
+		goto fail;
+	}
+
+	state->stat.total_instructions_processed++;
+
+	ret = htm_decode_fetch(state, &value);
+	if (ret < 0) {
+		goto fail;
+	}
+
+	ret = htm_decode_insn_msr(state, value, &insn.msr);
+	if (ret < 0) {
+		goto fail;
+	}
+
+	if (insn.info.prefix) {
+		ret = htm_decode_fetch(state, &value);
+		if (ret < 0) {
+			goto fail;
+		}
+
+		if (!state->fn || !state->private_data) {
+			insn.info.prefix = 0;
+			goto prefix_done;
+		}
+		ret = htm_decode_insn_prefix(state, value, &insn.prefix);
+		if (ret < 0) {
+			/* invalid record so as invalid and retry */
+			insn.info.prefix = 0;
+			htm_rewind(state, value);
+			goto done;
+		}
+	}
+
+prefix_done:
+	for (int i = 0; i < insn.info.dea || i < insn.info.dra; i++) {
+		if (insn.info.dea) {
+			ret = htm_decode_fetch(state, &value);
+			if (ret < 0) {
+				goto fail;
+			}
+
+			if (!state->fn || !state->private_data) {
+				insn.info.dea = 0;
+				goto dea_done;
+			}
+
+			if (insn.info.esid) {
+				ret = htm_decode_insn_esid(state, value, &insn.esid);
+			} else {
+				ret = htm_decode_insn_dea_p10(state, value, &insn.dea[i]);
+			}
+			if (ret < 0) {
+				/* invalid record so as invalid and retry */
+				insn.info.dea = 0;
+				insn.info.dra = 0;
+				htm_rewind(state, value);
+				goto done;
+			}
+		}
+
+dea_done:
+		if (insn.info.dra) {
+			ret = htm_decode_fetch(state, &value);
+			if (ret < 0) {
+				goto fail;
+			}
+
+			if (!state->fn || !state->private_data) {
+				insn.info.dra = 0;
+				goto done;
+			}
+
+			if (insn.info.esid) {
+				ret = htm_decode_insn_vsid(state, value, &insn.vsid);
+			} else {
+				ret = htm_decode_insn_dra_p10(state, value, &insn.dra[i]);
+			}
+			if (ret < 0) {
+				/* invalid record so mark so dra as invalid and retry */
+				insn.info.dra = 0;
+				htm_rewind(state, value);
+				goto done;
+			}
+		}
+	}
+
+done:
+	if (insn.ieara.valid) {
+		state->insn_addr = insn.ieara.address;
+		state->insn_real_addr = insn.ieara.real_address;
+	}
+
+	state->insn_addr = (state->insn_addr & ~0x7f) | insn.info.eabits;
+
+	if (insn.info.branch && !IS_ISEL(insn.info.opcode)) {
+		ret = insn_demunge_p10(insn.info.opcode, state->insn_addr, &state->insn);
+		if (ret < 0) {
+			goto fail;
+		}
+	} else {
+		state->insn = insn.info.opcode;
+	}
+
+	if (IS_BLR(state->insn) || IS_BCTR(state->insn)) {
+		state->insn &= ~0xe000;
+	}
+
+	// FIXME: skip if stats only
+	bb_ea_log(state->insn_addr);
+
+	ppcstats_log_inst(state->insn_addr, state->insn);
+	if (!state->fn || !state->private_data)
+		return 0;
+
+	optype = opcode_type(state->insn);
+	if (optype == OPCODE_RFSCV ||
+	    optype == OPCODE_RFID ||
+	    optype == OPCODE_HRFID ||
+	    optype == OPCODE_SC1 ||
+	    optype == OPCODE_SC2 ||
+	    optype == OPCODE_SCV_LIKE) {
+		insn.info.branch = true;
+	}
+
+	state->prev_addr = state->insn_addr;
+	state->prev_insn_branch = insn.info.branch;
+
+	rec.type = HTM_RECORD_INSN;
+	rec.insn.insn = insn.info.prefix ? insn.prefix.prefix : state->insn;
+	rec.insn.insn_addr = state->insn_addr;
+	rec.insn.branch = insn.info.branch;
+	rec.insn.conditional_branch = is_conditional_branch(rec.insn.insn);
+
+	if (!insn.info.esid && state->insn_page_size) {
+		rec.insn.insn_ra_valid = true;
+		rec.insn.insn_ra = state->insn_real_addr |
+			(state->insn_addr & ((1ul << state->insn_page_size) - 1));
+		rec.insn.insn_page_shift_valid = true;
+		rec.insn.insn_page_shift = state->insn_page_size;
+	} else {
+		rec.insn.insn_ra_valid = false;
+		rec.insn.insn_page_shift_valid = false;
+	}
+
+	if (!insn.info.esid && insn.info.dea) {
+		rec.insn.data_addr_valid = true;
+		rec.insn.data_addr = insn.dea[0].address;
+	} else {
+		rec.insn.data_addr_valid = false;
+	}
+
+	if (insn.info.dra && !insn.info.esid && state->data_page_size) {
+		rec.insn.data_ra_valid = true;
+		rec.insn.data_ra = insn.dra[0].page_address;
+		if (rec.insn.data_addr_valid)
+			/* Pull the page offset out of the dea */
+			rec.insn.data_ra |= insn.dea[0].address &
+				((1 << state->data_page_size) - 1);
+
+		rec.insn.data_page_shift_valid = true;
+		rec.insn.data_page_shift = state->data_page_size;
+	} else {
+		rec.insn.data_ra_valid = false;
+		rec.insn.data_page_shift_valid = false;
+	}
+
+	if (state->fn && state->private_data)
+		state->fn(&rec, state->private_data);
+
+	if (insn.info.prefix) {
+		memset(&rec, 0, sizeof(rec));
+		rec.type = HTM_RECORD_INSN;
+		rec.insn.insn = state->insn;
+		rec.insn.insn_addr = state->insn_addr + 4;
+
+		if (state->fn && state->private_data)
+			state->fn(&rec, state->private_data);
+	}
+
+	return 0;
+
+fail:
+	return ret;
 }
 
 static int htm_decode_insn(struct htm_decode_state *state,
@@ -1035,10 +1748,10 @@ fail:
 static int htm_decode_one(struct htm_decode_state *state)
 {
 	uint64_t value;
-	unsigned int tag;
+	unsigned int tag, type;
 	int ret;
 
-	ret = htm_decode_fetch(state, &value);
+	ret = htm_decode_fetch_internal(state, &value);
 	if (ret < 0) {
 		return ret;
 	}
@@ -1049,7 +1762,12 @@ static int htm_decode_one(struct htm_decode_state *state)
 	if (tag == 0xACEFF) {
 		ret = htm_decode_stamp(state, value);
 	} else {
-		ret = htm_decode_insn(state, value);
+		type = htm_insn_type(value);
+		if (type == 0xABCDE) {
+			ret = htm_decode_insn(state, value);
+		} else if (type == 0xABCDF) {
+			ret = htm_decode_insn_p10(state, value);
+		}
 		if (ret == -2) {
 			/*
 			 * Incomplete instruction sequence.

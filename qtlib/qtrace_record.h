@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "qtrace.h"
 
 enum branch_type {
 	BRANCH,
@@ -82,6 +83,11 @@ struct qtrace_record {
 	uint64_t tlbie_addr;
 	uint32_t tlbie_lpid;
 	uint32_t tlbie_pid;
+
+	bool node_valid;
+	uint8_t node;
+	uint8_t term_code;
+	uint8_t term_node;
 
 	/* We might want to add BH target unpredictable and static branch hints */
 
