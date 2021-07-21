@@ -129,7 +129,7 @@ static void htm_rewind(struct htm_decode_state *state, uint64_t value)
 	state->stat.checksum -= (word1 + word2);
 }
 
-static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
+static int htm_decode_fetch_internal(struct htm_decode_state *state, uint64_t *value)
 {
 	uint64_t v;
 	union {
@@ -159,6 +159,31 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 	state->stat.checksum += (word1 + word2);
 
 	return 0;
+}
+
+static int htm_decode_stamp(struct htm_decode_state *state,
+			    uint64_t value);
+
+/*
+ * On P10 timestamp records may come at any time, just skip them.
+ */
+static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
+{
+	uint64_t v;
+	int r;
+
+	*value = 0;
+	r = htm_decode_fetch_internal(state, &v);
+	if (r)
+		return r;
+	if (htm_bits(v, 0, 19) == 0xaceff) {
+		r = htm_decode_stamp(state, v);
+		if (r)
+			return r;
+		r = htm_decode_fetch_internal(state, &v);
+	}
+	*value = v;
+	return r;
 }
 
 static int htm_decode_record(struct htm_decode_state *state,
@@ -1038,7 +1063,7 @@ static int htm_decode_one(struct htm_decode_state *state)
 	unsigned int tag;
 	int ret;
 
-	ret = htm_decode_fetch(state, &value);
+	ret = htm_decode_fetch_internal(state, &value);
 	if (ret < 0) {
 		return ret;
 	}
