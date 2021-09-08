@@ -1,0 +1,84 @@
+#!/bin/bash
+
+qtracedir="../../"
+
+PATH="$qtracedir/htm/:$qtracedir/qtdis/:$PATH"
+
+run_test()
+{
+	testnum="$1"
+
+	dumpfile=dumps/"$testnum".htm
+	disfile=disasms/"$testnum".dis
+	descfile=desc/"$testnum".desc
+
+	if ! [ -f "$dumpfile" ]; then
+		echo "Missing file $dumpfile: Failed."
+		return 1
+	fi
+
+	if ! [ -f "$disfile" ]; then
+		echo "Missing file $disfile: Failed."
+		return 1
+	fi
+
+	if ! [ -f "$descfile" ]; then
+		echo "Missing file $descfile: Failed."
+		return 1
+	fi
+
+	qtfile=$(mktemp)
+	outfile=$(mktemp)
+
+	read -r testname < "$descfile"
+
+	if ! htmdecoder "$dumpfile" -o "$qtfile"; then
+		echo "$testnum $testname: Failed."
+		rm "$qtfile"
+		rm "$outfile"
+		return 1
+	fi
+
+	if ! qtdis -v "$qtfile" > "$outfile"; then
+		echo "$testnum $testname: Failed."
+		rm "$qtfile"
+		rm "$outfile"
+		return 1
+	fi
+
+	if cmp -s "$outfile" "$disfile"; then
+		echo "$testnum $testname: Passed."
+		rm "$qtfile"
+		rm "$outfile"
+		return 0
+	else
+		echo "$testnum $testname: Failed."
+		diff "$outfile" "$disfile"
+		rm "$qtfile"
+		rm "$outfile"
+		return 1
+	fi
+}
+
+if [ "$1" = "-h" ]; then
+	echo "Usage: $0 [number]" >&2
+	exit 1
+fi
+
+if [ "$1" ]; then
+	echo "Running test $i"
+	run_test "$1"
+	exit $?
+fi
+
+echo "Running all tests"
+allpassed=0
+for i in dumps/*.htm; do
+	num=$(basename "${i/\.htm//}")
+	run_test "$num"
+	if [ "$?" = "1" ]; then
+		allpassed=1
+	fi
+done
+
+exit $allpassed

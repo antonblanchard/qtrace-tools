@@ -519,8 +519,10 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	/*
 	 * We sometimes see header records in the middle of a trace, which are
 	 * identified by a null instruction. Skip over them.
+	 * Suffixes of prefixed instructions come as seperate records and can
+	 * be null.
 	 */
-	while (be32_to_cpup(state->ptr) == 0) {
+	while (be32_to_cpup(state->ptr) == 0 && !state->prefixed) {
 		if (qtreader_parse_header(state) == false)
 			goto err;
 	}
@@ -564,6 +566,11 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 
 	record->insn = GET32(state);
 
+	if (state->prefixed)
+		state->suffix = record->insn;
+
+	state->prefixed = ((record->insn >> 26) == 1);
+
 	flags = GET16(state);
 
 	if (flags & QTRACE_EXTENDED_FLAGS_PRESENT) {
@@ -597,21 +604,21 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 	if (flags & QTRACE_IAR_CHANGE_PRESENT) {
 	}
 
-	if (flags & QTRACE_NODE_PRESENT)
-		GET8(state);
+	if (flags & QTRACE_NODE_PRESENT) {
+		record->node_valid = true;
+		record->node = GET8(state);
+	}
 
 	if (flags & QTRACE_TERMINATION_PRESENT) {
-		uint8_t termination_code;
-
 		record->branch = true;
 
-		GET8(state);
-		termination_code = GET8(state);
+		record->term_node = GET8(state);
+		record->term_code = GET8(state);
 
-		if ((termination_code == QTRACE_EXCEEDED_MAX_INST_DEPTH) ||
-		    (termination_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH)) {
+		if ((record->term_code == QTRACE_EXCEEDED_MAX_INST_DEPTH) ||
+		    (record->term_code == QTRACE_EXCEEDED_MAX_BRANCH_DEPTH)) {
 			record->conditional_branch = true;
-		} else if (termination_code == QTRACE_UNCONDITIONAL_BRANCH) {
+		} else if (record->term_code == QTRACE_UNCONDITIONAL_BRANCH) {
 			record->conditional_branch = false;
 		} else {
 			printf("Inconsistent branch\n");
@@ -631,9 +638,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int radix_nr_data_ptes = get_radix_data_ptes(flags3);
+		state->radix_nr_data_ptes = get_radix_data_ptes(flags3);
 
-		if (parse_radix(state, radix_nr_data_ptes, NULL) == false)
+		if (parse_radix(state, state->radix_nr_data_ptes, state->radix_data_ptes) == false)
 			goto err;
 	}
 
@@ -676,9 +683,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
+		state->radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
 
-		if (parse_radix(state, radix_nr_insn_ptes, NULL) == false)
+		if (parse_radix(state, state->radix_nr_insn_ptes, state->radix_insn_ptes) == false)
 			goto err;
 	}
 

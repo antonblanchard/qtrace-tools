@@ -27,6 +27,8 @@ struct qtreader_state {
 	unsigned int verbose;
 	int fd;
 	uint64_t flags;
+	bool prefixed;
+	uint32_t suffix;
 
 	bool insn_rpn_valid;
 	uint32_t insn_rpn;
@@ -41,6 +43,11 @@ struct qtreader_state {
 	uint32_t lpid;
 	bool pid_present;
 	uint32_t pid;
+
+	unsigned int radix_nr_data_ptes;
+	uint64_t radix_insn_ptes[NR_RADIX_PTES];
+	unsigned int radix_nr_insn_ptes;
+	uint64_t radix_data_ptes[NR_RADIX_PTES];
 };
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);
