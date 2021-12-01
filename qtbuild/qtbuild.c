@@ -42,6 +42,12 @@
 
 #undef DEBUG
 
+#ifdef BFD_SECTION_SIZE_ONE_ARG
+#define xbfd_section_size(x)	bfd_section_size(x)
+#else
+#define xbfd_section_size(x)	bfd_section_size(bpf, x)
+#endif
+
 static struct qtwriter_state qtwr;
 
 #define BRANCH_TYPE_ABS 0
@@ -96,9 +102,9 @@ static void build(bfd *abfd)
 		exit(1);
 	}
 
-	text_size = bfd_section_size(bfd, text_section);
-	insnmap_size = bfd_section_size(bfd, insnmap_section);
-	ldstmap_size = bfd_section_size(bfd, ldstmap_section);
+	text_size = xbfd_section_size(text_section);
+	insnmap_size = xbfd_section_size(insnmap_section);
+	ldstmap_size = xbfd_section_size(ldstmap_section);
 
 	text_buf = malloc(text_size);
 	insnmap_buf = malloc(insnmap_size + sizeof(struct insn_map));
