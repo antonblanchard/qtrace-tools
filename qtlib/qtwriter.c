@@ -267,6 +267,8 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 				termination_code = QTRACE_EXCEEDED_MAX_BRANCH_DEPTH;
 			else
 				termination_code = QTRACE_UNCONDITIONAL_BRANCH;
+		} else {
+			termination_code = QTRACE_EXCEPTION;
 		}
 
 		put8(state, termination_code);
