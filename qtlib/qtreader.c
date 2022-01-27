@@ -620,6 +620,8 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 			record->conditional_branch = true;
 		} else if (record->term_code == QTRACE_UNCONDITIONAL_BRANCH) {
 			record->conditional_branch = false;
+		} else if (record->term_code == QTRACE_EXCEPTION) {
+			record->conditional_branch = false;
 		} else {
 			printf("Inconsistent branch\n");
 			goto err;

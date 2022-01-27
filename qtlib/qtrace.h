@@ -70,6 +70,7 @@
 /* Termination codes */
 #define QTRACE_EXCEEDED_MAX_INST_DEPTH			0x40
 #define QTRACE_EXCEEDED_MAX_BRANCH_DEPTH		0x80
+#define QTRACE_EXCEPTION				0x10
 #define QTRACE_UNCONDITIONAL_BRANCH			0x08
 
 /* 4 level radix */
