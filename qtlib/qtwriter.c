@@ -138,6 +138,9 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 	if (record->insn_page_shift_valid)
 		hdr_flags |= QTRACE_HDR_IAR_PAGE_SIZE_PRESENT;
 
+	if (record->guest_insn_page_shift_valid)
+		hdr_flags |= QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT;
+
 	if (state->version)
 		hdr_flags |= QTRACE_HDR_VERSION_NUMBER_PRESENT;
 
@@ -165,6 +168,9 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	if (record->insn_page_shift_valid)
 		put8(state, record->insn_page_shift);
+
+	if (record->guest_insn_page_shift_valid)
+		put8(state, record->guest_insn_page_shift);
 
 	return true;
 }
@@ -232,11 +238,18 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_page_shift_valid)
 		flags2 |= QTRACE_DATA_PAGE_SIZE_PRESENT;
 
+
 	if (record->insn_ra_valid && iar_change)
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
+	if (state->prev_record.guest_data_page_shift_valid)
+		flags2 |= QTRACE_DATA_GPAGE_SIZE_PRESENT;
+
 	if (record->insn_page_shift_valid && iar_change)
 		flags2 |= QTRACE_IAR_PAGE_SIZE_PRESENT;
+
+	if (record->guest_insn_page_shift_valid && iar_change)
+		flags2 |= QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT;
 
 	if (is_branch) {
 		flags |= QTRACE_NODE_PRESENT | QTRACE_TERMINATION_PRESENT;
@@ -303,8 +316,15 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (record->insn_page_shift_valid && iar_change)
 		put8(state, record->insn_page_shift);
 
+	if (record->guest_insn_page_shift_valid && iar_change)
+		put8(state, record->guest_insn_page_shift);
+
 	if (state->prev_record.data_page_shift_valid)
 		put8(state, state->prev_record.data_page_shift);
+
+	if (state->prev_record.guest_data_page_shift_valid)
+		put8(state, state->prev_record.guest_data_page_shift);
+
 
 	memcpy(&state->prev_record, record, sizeof(*record));
 

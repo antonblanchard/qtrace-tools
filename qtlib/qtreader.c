@@ -229,8 +229,11 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 		state->next_insn_page_shift = GET8(state);
 	}
 
-	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT) {
+		state->guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift = GET8(state);
+	}
 
 	if (flags3 & QTRACE_PTCR_PRESENT)
 		GET64(state);
@@ -550,6 +553,21 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		record->insn_page_shift = state->insn_page_shift;
 	}
 
+
+	if (state->next_guest_insn_page_shift_valid) {
+		if (!state->guest_insn_page_shift_valid) {
+			fprintf(stderr, "Warning: guest insn page size becomes valid\n");
+			state->guest_insn_page_shift_valid = true;
+		}
+		state->guest_insn_page_shift = state->next_guest_insn_page_shift;
+	}
+
+
+	if (state->guest_insn_page_shift_valid) {
+		record->guest_insn_page_shift_valid = true;
+		record->guest_insn_page_shift = state->guest_insn_page_shift;
+	}
+
 	if (state->insn_rpn_valid) {
 		uint8_t pshift = 16;
 		uint64_t ra;
@@ -752,11 +770,17 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		record->data_ra = ra;
 	}
 
-	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT) {
+		state->next_guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift = GET8(state);
+	} else {
+		state->next_guest_insn_page_shift_valid = false;
+	}
 
-	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT) {
+		record->guest_data_page_shift_valid = true;
+		record->guest_data_page_shift = GET8(state);
+	}
 
 	if (record->branch && (state->flags & QTREADER_FLAGS_BRANCH))
 		annotate_branch(record);

@@ -39,6 +39,11 @@ struct qtreader_state {
 	bool data_page_shift_valid;
 	uint32_t data_page_shift;
 
+	bool guest_insn_page_shift_valid;
+	uint32_t guest_insn_page_shift;
+	uint32_t next_guest_insn_page_shift;
+	bool next_guest_insn_page_shift_valid;
+
 	bool lpid_present;
 	uint32_t lpid;
 	bool pid_present;

@@ -62,6 +62,12 @@ struct qtrace_record {
 	bool branch;
 	bool conditional_branch;
 
+	bool guest_insn_page_shift_valid;
+	uint32_t guest_insn_page_shift;
+
+	bool guest_data_page_shift_valid;
+	uint32_t guest_data_page_shift;
+
 	/*
 	 * The rest of the fields are populated by qtreader if enabled,
 	 * but are not required by qtwriter.
