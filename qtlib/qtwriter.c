@@ -121,14 +121,16 @@ static inline void put64(struct qtwriter_state *state, uint64_t val)
 static bool qtwriter_write_header(struct qtwriter_state *state,
 				  struct qtrace_record *record)
 {
-	uint64_t hdr_flags;
+	uint16_t hdr_flags, flags, flags2;
 
 	/* Header is identified by a zero instruction */
 	put32(state, 0);
 
-	put16(state, QTRACE_EXTENDED_FLAGS_PRESENT);
+	flags = QTRACE_EXTENDED_FLAGS_PRESENT;
+	put16(state, flags);
 
-	put16(state, QTRACE_FILE_HEADER_PRESENT);
+	flags2 = QTRACE_FILE_HEADER_PRESENT;
+	put16(state, flags2);
 
 	hdr_flags = QTRACE_HDR_IAR_PRESENT;
 
