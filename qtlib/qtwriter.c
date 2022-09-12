@@ -132,17 +132,21 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	flags2 = QTRACE_FILE_HEADER_PRESENT;
 
-	if (record->radix_nr_insn_ptes)
+	if (record->radix_insn.nr_ptes)
 		flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
 
 	put16(state, flags2);
 
 	flags3 = 0;
-	if (record->radix_nr_insn_ptes) {
+	if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
 		have_ptes = true;
 		flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
 				    (QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
-	};
+	} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+		have_ptes = true;
+		flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
+				    (QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
+	}
 
 	if (have_ptes)
 		put16(state, flags3);
@@ -176,8 +180,27 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 
 	if (have_ptes) {
-		for (int i = 0; i < record->radix_nr_insn_ptes; i++)
-			put64(state, record->radix_insn_ptes[i]);
+		int nr_walks = 1;
+		int nr_ptes = NR_RADIX_PTES;
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			nr_walks = record->radix_insn.nr_pte_walks;
+			nr_ptes = record->radix_insn.nr_ptes;
+			put8(state, record->radix_insn.nr_ptes);
+			put8(state, record->radix_insn.nr_pte_walks);
+		}
+
+		for (int j = 0; j < nr_walks; j++)
+			for (int i = 0; i < nr_ptes; i++)
+				put64(state, record->radix_insn.host_ptes[j][i]);
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			for (int i = 0; i < record->radix_insn.nr_pte_walks - 1; i++)
+				put64(state, record->radix_insn.host_real_addrs[i]);
+
+			for (int i = 0; i < record->radix_insn.nr_pte_walks; i++)
+				put64(state, record->radix_insn.guest_real_addrs[i]);
+		}
 	}
 
 	if (record->insn_ra_valid) {
@@ -264,12 +287,18 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_ra_valid) {
 		flags |= QTRACE_DATA_RPN_PRESENT;
 
-		if (state->prev_record.radix_nr_data_ptes) {
+		if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks == 1) {
 			have_flags3 = true;
 			have_data_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
 			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_DATA_SHIFT;
 			flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+		} else if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks > 1) {
+			have_flags3 = true;
+			have_data_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_DATA_SHIFT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
 		}
 	}
 
@@ -282,12 +311,18 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (record->insn_ra_valid && iar_change) {
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
-		if (record->radix_nr_insn_ptes) {
+		if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
 			have_flags3 = true;
 			have_insn_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
 			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT;
 			flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT;
+		} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+			have_flags3 = true;
+			have_insn_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT;
 		}
 	}
 
@@ -345,8 +380,27 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		uint8_t pshift = 16;
 
 		if (have_data_ptes) {
-			for (int i = 0; i < state->prev_record.radix_nr_data_ptes; i++)
-				put64(state, state->prev_record.radix_data_ptes[i]);
+			int nr_walks = 1;
+			int nr_ptes = NR_RADIX_PTES;
+
+			if (state->prev_record.radix_data.nr_pte_walks > 1) {
+				nr_walks = state->prev_record.radix_data.nr_pte_walks;
+				nr_ptes = state->prev_record.radix_data.nr_ptes;
+				put8(state, state->prev_record.radix_data.nr_ptes);
+				put8(state, state->prev_record.radix_data.nr_pte_walks);
+			}
+
+			for (int i = 0; i < nr_walks; i++)
+				for (int j = 0; j < nr_ptes; j++)
+					put64(state, state->prev_record.radix_data.host_ptes[i][j]);
+
+			if (state->prev_record.radix_data.nr_pte_walks > 1) {
+				for (int i = 0; i < state->prev_record.radix_data.nr_pte_walks - 1; i++)
+					put64(state, state->prev_record.radix_data.host_real_addrs[i]);
+
+				for (int i = 0; i < state->prev_record.radix_data.nr_pte_walks; i++)
+					put64(state, state->prev_record.radix_data.guest_real_addrs[i]);
+			}
 		}
 
 
@@ -360,8 +414,27 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		put64(state, record->insn_addr);
 
 	if (have_insn_ptes) {
-		for (int i = 0; i < record->radix_nr_insn_ptes; i++)
-			put64(state, record->radix_insn_ptes[i]);
+		int nr_walks = 1;
+		int nr_ptes = NR_RADIX_PTES;
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			nr_walks = record->radix_insn.nr_pte_walks;
+			nr_ptes = record->radix_insn.nr_ptes;
+			put8(state, record->radix_insn.nr_ptes);
+			put8(state, record->radix_insn.nr_pte_walks);
+		}
+
+		for (int i = 0; i < nr_walks; i++)
+			for (int j = 0; j < nr_ptes; j++)
+				put64(state, record->radix_insn.host_ptes[i][j]);
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			for (int i = 0; i < record->radix_insn.nr_pte_walks - 1; i++)
+				put64(state, record->radix_insn.host_real_addrs[i]);
+
+			for (int i = 0; i < record->radix_insn.nr_pte_walks; i++)
+				put64(state, record->radix_insn.guest_real_addrs[i]);
+		}
 	}
 
 	if (record->insn_ra_valid && iar_change) {

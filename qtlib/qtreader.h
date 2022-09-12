@@ -49,12 +49,11 @@ struct qtreader_state {
 	bool pid_present;
 	uint32_t pid;
 
-	unsigned int radix_nr_data_ptes;
-	uint64_t radix_insn_ptes[NR_RADIX_PTES];
-	uint64_t next_radix_insn_ptes[NR_RADIX_PTES];
-	unsigned int radix_nr_insn_ptes;
-	unsigned int next_radix_nr_insn_ptes;
-	uint64_t radix_data_ptes[NR_RADIX_PTES];
+	struct qtrace_radix radix_insn;
+	struct qtrace_radix next_radix_insn;
+
+	struct qtrace_radix radix_data;
+	struct qtrace_radix next_radix_data;
 };
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);

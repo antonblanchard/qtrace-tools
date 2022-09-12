@@ -27,22 +27,24 @@ int run_qtwriter(void)
 	record.insn_ra = 0x100;
 	record.insn = 0x6000000;
 
-	record.radix_nr_insn_ptes = NR_RADIX_PTES;
-	record.radix_insn_ptes[0] = 0xdeadf00d;
-	record.radix_insn_ptes[1] = 0xdeadf01d;
-	record.radix_insn_ptes[2] = 0xdeadf02d;
-	record.radix_insn_ptes[3] = 0xdeadf03d;
+	record.radix_insn.nr_ptes = NR_RADIX_PTES;
+	record.radix_insn.nr_pte_walks = 1;
+	record.radix_insn.host_ptes[0][0] = 0xdeadf00d;
+	record.radix_insn.host_ptes[0][1] = 0xdeadf01d;
+	record.radix_insn.host_ptes[0][2] = 0xdeadf02d;
+	record.radix_insn.host_ptes[0][3] = 0xdeadf03d;
 
 	qtwriter_write_record(&state, &record);
 
 	record.data_addr_valid = true;
 	record.data_ra = 0xc0000000;
 	record.data_ra_valid = true;
-	record.radix_nr_data_ptes = NR_RADIX_PTES;
-	record.radix_data_ptes[0] = 0xcafef00d;
-	record.radix_data_ptes[1] = 0xcafef01d;
-	record.radix_data_ptes[2] = 0xcafef02d;
-	record.radix_data_ptes[3] = 0xcafef03d;
+	record.radix_data.nr_ptes = NR_RADIX_PTES;
+	record.radix_data.nr_pte_walks = 1;
+	record.radix_data.host_ptes[0][0] = 0xcafef00d;
+	record.radix_data.host_ptes[0][1] = 0xcafef01d;
+	record.radix_data.host_ptes[0][2] = 0xcafef02d;
+	record.radix_data.host_ptes[0][3] = 0xcafef03d;
 	qtwriter_write_record(&state, &record);
 
 	qtwriter_close(&state);
@@ -71,19 +73,19 @@ int run_qtreader(void)
 	/* Test Instruction PTES */
 	qtreader_next_record(&state, &record);
 	assert(record.insn == 0x6000000);
-	assert(record.radix_nr_insn_ptes == NR_RADIX_PTES);
-	assert(record.radix_insn_ptes[0] == 0xdeadf00d);
-	assert(record.radix_insn_ptes[1] == 0xdeadf01d);
-	assert(record.radix_insn_ptes[2] == 0xdeadf02d);
-	assert(record.radix_insn_ptes[3] == 0xdeadf03d);
+	assert(record.radix_insn.nr_ptes == NR_RADIX_PTES);
+	assert(record.radix_insn.host_ptes[0][0] == 0xdeadf00d);
+	assert(record.radix_insn.host_ptes[0][1] == 0xdeadf01d);
+	assert(record.radix_insn.host_ptes[0][2] == 0xdeadf02d);
+	assert(record.radix_insn.host_ptes[0][3] == 0xdeadf03d);
 
 	/* Test Data PTES */
 	qtreader_next_record(&state, &record);
-	assert(record.radix_nr_data_ptes == NR_RADIX_PTES);
-	assert(record.radix_data_ptes[0] == 0xcafef00d);
-	assert(record.radix_data_ptes[1] == 0xcafef01d);
-	assert(record.radix_data_ptes[2] == 0xcafef02d);
-	assert(record.radix_data_ptes[3] == 0xcafef03d);
+	assert(record.radix_data.nr_ptes == NR_RADIX_PTES);
+	assert(record.radix_data.host_ptes[0][0] == 0xcafef00d);
+	assert(record.radix_data.host_ptes[0][1] == 0xcafef01d);
+	assert(record.radix_data.host_ptes[0][2] == 0xcafef02d);
+	assert(record.radix_data.host_ptes[0][3] == 0xcafef03d);
 
 	return 0;
 }

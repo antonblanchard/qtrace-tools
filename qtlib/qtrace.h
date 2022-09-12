@@ -75,5 +75,6 @@
 
 /* 4 level radix */
 #define NR_RADIX_PTES	4
+#define MAX_RADIX_WALKS 5
 
 #endif

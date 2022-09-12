@@ -21,7 +21,7 @@ libbb_a_CFLAGS = $(AM_CFLAGS) -I$(top_srcdir)/qtrace-bbv
 qtlib_TESTS = qtlib/tests/test1 qtlib/tests/test2 \
 	      qtlib/tests/test3 qtlib/tests/test4 \
 	      qtlib/tests/basictest qtlib/tests/guestpagetest \
-	      qtlib/tests/radixtest
+	      qtlib/tests/radixtest qtlib/tests/radixonradixtest
 
 check_PROGRAMS = $(qtlib_TESTS)
 
@@ -48,9 +48,11 @@ qtlib_tests_guestpagetest_LDADD = libqtrace.a
 qtlib_tests_radixtest_SOURCES = qtlib/tests/radixtest.c
 qtlib_tests_radixtest_LDADD = libqtrace.a
 
-qtlib_run_tests = qtlib/tests/basictest qtlib/tests/guestpagetest \
-			qtlib/tests/radixtest
+qtlib_tests_radixonradixtest_SOURCES = qtlib/tests/radixonradixtest.c
+qtlib_tests_radixonradixtest_LDADD = libqtrace.a
 
+qtlib_run_tests = qtlib/tests/basictest qtlib/tests/guestpagetest \
+			qtlib/tests/radixtest qtlib/tests/radixonradixtest
 
 bin_PROGRAMS = branch/link_stack qtdis/qtdis qtrace-bbv/qtrace-bbv \
 	       qtbuild/qtbuild htm/htmdecoder $(PTRACER)

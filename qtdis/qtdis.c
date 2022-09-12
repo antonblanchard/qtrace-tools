@@ -384,9 +384,9 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 		if (state->data_rpn_valid)
 			fprintf(stdout, " DATA RPN 0x%08x", state->data_rpn);
 
-		if (state->radix_nr_data_ptes) {
+		if (state->radix_data.nr_ptes) {
 			fprintf(stdout, " DATA RADIX ");
-			print_radix(state->radix_nr_data_ptes, state->radix_data_ptes);
+			print_radix(state->radix_data.nr_ptes, &state->radix_data.host_ptes[0][0]);
 		}
 
 		if (rec->data_page_shift_valid)
@@ -399,9 +399,9 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 		//if (flags2 & QTRACE_SEQUENTIAL_INSTRUCTION_RPN_PRESENT)
 		//	fprintf(stdout, " INSN SEQ RPN 0x%08lx", iar_seq_rpn);
 
-		if (state->next_insn_rpn_valid && state->radix_nr_insn_ptes) {
+		if (state->next_insn_rpn_valid && state->radix_insn.nr_ptes) {
 			fprintf(stdout, " INSN RADIX ");
-			print_radix(state->radix_nr_insn_ptes, state->radix_insn_ptes);
+			print_radix(state->radix_insn.nr_ptes, &state->radix_insn.host_ptes[0][0]);
 		}
 
 		if (state->next_insn_page_shift_valid)

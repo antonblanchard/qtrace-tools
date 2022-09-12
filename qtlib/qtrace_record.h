@@ -45,6 +45,14 @@ struct qtrace_reg_state {
 	struct qtrace_register_info sprs_out[QTRACE_MAX_SPRS_OUT];
 };
 
+struct qtrace_radix {
+	unsigned int nr_ptes;
+	unsigned int nr_pte_walks;
+	uint64_t host_ptes[MAX_RADIX_WALKS][NR_RADIX_PTES];
+	uint64_t host_real_addrs[MAX_RADIX_WALKS-1];
+	uint64_t guest_real_addrs[MAX_RADIX_WALKS];
+};
+
 struct qtrace_record {
 	uint32_t insn;
 	uint64_t insn_addr;
@@ -68,11 +76,10 @@ struct qtrace_record {
 	bool guest_data_page_shift_valid;
 	uint32_t guest_data_page_shift;
 
-	unsigned int radix_nr_insn_ptes;
-	uint64_t radix_insn_ptes[NR_RADIX_PTES];
+	struct qtrace_radix radix_insn;
 
-	unsigned int radix_nr_data_ptes;
-	uint64_t radix_data_ptes[NR_RADIX_PTES];
+	struct qtrace_radix radix_data;
+
 
 	/*
 	 * The rest of the fields are populated by qtreader if enabled,
