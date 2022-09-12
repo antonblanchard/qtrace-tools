@@ -51,7 +51,9 @@ struct qtreader_state {
 
 	unsigned int radix_nr_data_ptes;
 	uint64_t radix_insn_ptes[NR_RADIX_PTES];
+	uint64_t next_radix_insn_ptes[NR_RADIX_PTES];
 	unsigned int radix_nr_insn_ptes;
+	unsigned int next_radix_nr_insn_ptes;
 	uint64_t radix_data_ptes[NR_RADIX_PTES];
 };
 

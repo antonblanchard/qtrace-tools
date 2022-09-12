@@ -211,9 +211,9 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 		SKIP(state, 7);
 
 	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int nr = get_radix_insn_ptes(flags3);
+		state->next_radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
 
-		if (parse_radix(state, nr, NULL) == false)
+		if (parse_radix(state, state->next_radix_nr_insn_ptes, state->next_radix_insn_ptes) == false)
 			goto err;
 	}
 
@@ -548,9 +548,19 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->insn_page_shift = state->next_insn_page_shift;
 	}
 
+	if (state->next_radix_nr_insn_ptes) {
+		state->radix_nr_insn_ptes = state->next_radix_nr_insn_ptes;
+		memcpy(state->radix_insn_ptes, state->next_radix_insn_ptes, sizeof(state->radix_insn_ptes));
+	}
+
 	if (state->insn_page_shift_valid) {
 		record->insn_page_shift_valid = true;
 		record->insn_page_shift = state->insn_page_shift;
+	}
+
+	if (state->radix_nr_insn_ptes) {
+		record->radix_nr_insn_ptes = state->radix_nr_insn_ptes;
+		memcpy(record->radix_insn_ptes, state->radix_insn_ptes, sizeof(record->radix_insn_ptes));
 	}
 
 
@@ -658,9 +668,9 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-		state->radix_nr_data_ptes = get_radix_data_ptes(flags3);
+		record->radix_nr_data_ptes = get_radix_data_ptes(flags3);
 
-		if (parse_radix(state, state->radix_nr_data_ptes, state->radix_data_ptes) == false)
+		if (parse_radix(state, record->radix_nr_data_ptes, record->radix_data_ptes) == false)
 			goto err;
 	}
 
@@ -703,10 +713,11 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		state->radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
+		state->next_radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
 
-		if (parse_radix(state, state->radix_nr_insn_ptes, state->radix_insn_ptes) == false)
+		if (parse_radix(state, state->next_radix_nr_insn_ptes, state->next_radix_insn_ptes) == false)
 			goto err;
+
 	}
 
 	if (flags & QTRACE_IAR_RPN_PRESENT) {

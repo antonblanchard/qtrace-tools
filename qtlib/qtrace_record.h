@@ -68,6 +68,12 @@ struct qtrace_record {
 	bool guest_data_page_shift_valid;
 	uint32_t guest_data_page_shift;
 
+	unsigned int radix_nr_insn_ptes;
+	uint64_t radix_insn_ptes[NR_RADIX_PTES];
+
+	unsigned int radix_nr_data_ptes;
+	uint64_t radix_data_ptes[NR_RADIX_PTES];
+
 	/*
 	 * The rest of the fields are populated by qtreader if enabled,
 	 * but are not required by qtwriter.
