@@ -23,6 +23,8 @@ qtlib_TESTS = qtlib/tests/test1 qtlib/tests/test2 \
 
 check_PROGRAMS = $(qtlib_TESTS)
 
+TESTS = $(htm_tests)
+
 qtlib_tests_test1_SOURCES = qtlib/tests/test1.c
 qtlib_tests_test1_LDADD = libqtrace.a
 
@@ -34,6 +36,7 @@ qtlib_tests_test3_LDADD = libqtrace.a
 
 qtlib_tests_test4_SOURCES = qtlib/tests/test4.c
 qtlib_tests_test4_LDADD = libqtrace.a
+
 
 bin_PROGRAMS = branch/link_stack qtdis/qtdis qtrace-bbv/qtrace-bbv \
 	       qtbuild/qtbuild htm/htmdecoder $(PTRACER)
@@ -66,3 +69,5 @@ ptracer_ptracer_LDADD = libqtrace.a
 htm_htmdecoder_SOURCES = \
 	htm/htm.c htm/htmdecoder.c htm/tlb.c
 htm_htmdecoder_LDADD = libqtrace.a libppcstats.a libbb.a
+
+htm_tests = htm/tests/run_tests
