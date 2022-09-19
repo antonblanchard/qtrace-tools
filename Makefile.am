@@ -24,7 +24,7 @@ qtlib_TESTS = qtlib/tests/test1 qtlib/tests/test2 \
 	      qtlib/tests/radixtest qtlib/tests/radixonradixtest \
 	      qtlib/tests/realonradixtest
 
-check_PROGRAMS = $(qtlib_TESTS)
+check_PROGRAMS = $(qtlib_TESTS) $(htm_c_tests)
 
 TESTS = $(qtlib_run_tests) $(htm_tests)
 
@@ -91,4 +91,10 @@ htm_htmdecoder_SOURCES = \
 	htm/htm.c htm/htmdecoder.c htm/tlb.c
 htm_htmdecoder_LDADD = libqtrace.a libppcstats.a libbb.a
 
-htm_tests = htm/tests/run_tests
+htm_tests_basictest_SOURCES = \
+	htm/htm.c htm/tests/basictest.c htm/tlb.c
+htm_tests_basictest_LDADD = libqtrace.a libppcstats.a libbb.a
+
+htm_c_tests = htm/tests/basictest
+
+htm_tests = htm/tests/run_tests $(htm_c_tests)
