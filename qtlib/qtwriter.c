@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <assert.h>
 
 #include "qtrace_record.h"
 #include "qtrace.h"
@@ -139,10 +140,14 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	flags3 = 0;
 	if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
+		assert(record->radix_insn.nr_pte_walks == 1);
 		have_ptes = true;
 		flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
 				    (QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
 	} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+		assert(record->radix_insn.nr_ptes <= NR_RADIX_PTES);
+		assert(record->radix_insn.nr_pte_walks <= MAX_RADIX_WALKS);
+		assert(record->radix_insn.nr_pte_walks > 0);
 		have_ptes = true;
 		flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
 				    (QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
@@ -288,12 +293,16 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		flags |= QTRACE_DATA_RPN_PRESENT;
 
 		if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks == 1) {
+			assert(state->prev_record.radix_data.nr_pte_walks == 1);
 			have_flags3 = true;
 			have_data_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
 			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_DATA_SHIFT;
 			flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
 		} else if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks > 1) {
+			assert(state->prev_record.radix_data.nr_ptes <= NR_RADIX_PTES);
+			assert(state->prev_record.radix_data.nr_pte_walks <= MAX_RADIX_WALKS);
+			assert(state->prev_record.radix_data.nr_pte_walks > 0);
 			have_flags3 = true;
 			have_data_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
@@ -312,12 +321,16 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 		flags |= QTRACE_IAR_RPN_PRESENT;
 
 		if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
+			assert(record->radix_insn.nr_pte_walks == 1);
 			have_flags3 = true;
 			have_insn_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
 			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT;
 			flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT;
 		} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+			assert(record->radix_insn.nr_ptes <= NR_RADIX_PTES);
+			assert(record->radix_insn.nr_pte_walks <= MAX_RADIX_WALKS);
+			assert(record->radix_insn.nr_pte_walks > 0);
 			have_flags3 = true;
 			have_insn_ptes = true;
 			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
