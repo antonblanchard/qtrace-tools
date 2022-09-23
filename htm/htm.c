@@ -1248,7 +1248,7 @@ static int htm_decode_insn_p10(struct htm_decode_state *state,
 {
 	struct htm_insn_p10 insn = { { 0 } };
 	struct htm_record rec;
-	int xlate_cnt = 0;
+	int nxlates = 0;
 	int optype;
 	int ret;
 
@@ -1256,9 +1256,9 @@ static int htm_decode_insn_p10(struct htm_decode_state *state,
 	state->stat.total_instruction_scanned++;
 
 	while ((htm_get_rec_type(value) == REC_TYPE_IEARA) ||
-		((htm_get_rec_type(value) == REC_TYPE_XLATE) && (xlate_cnt < 3))) {
+		((htm_get_rec_type(value) == REC_TYPE_XLATE) && (nxlates < 3))) {
 		if (htm_get_rec_type(value) == REC_TYPE_XLATE) {
-			ret = htm_decode_insn_xlate(state, value, &insn.xlates[xlate_cnt]);
+			ret = htm_decode_insn_xlate(state, value, &insn.xlates[nxlates]);
 			if (ret < 0) {
 				goto fail;
 			}
@@ -1267,7 +1267,7 @@ static int htm_decode_insn_p10(struct htm_decode_state *state,
 			if (ret < 0) {
 				goto fail;
 			}
-			xlate_cnt++;
+			nxlates++;
 		}
 		if (htm_get_rec_type(value) == REC_TYPE_IEARA) {
 			ret = htm_decode_insn_ieara(state, value, &insn.ieara);
