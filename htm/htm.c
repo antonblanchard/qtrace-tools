@@ -446,7 +446,7 @@ struct htm_insn_xlate {
 	bool d_side;
 	unsigned int lpid;
 	unsigned int pid;
-	int walk_cnt;
+	int nwalks;
 	struct htm_insn_walk walks[37];
 };
 
@@ -636,12 +636,12 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 		return -1;
 	}
 
-	xlate->walk_cnt = i - 1;
+	xlate->nwalks = i;
 
 	if (xlate->d_side) {
-		state->data_page_size = xlate->walks[xlate->walk_cnt].page_size;
+		state->data_page_size = xlate->walks[xlate->nwalks - 1].page_size;
 	} else {
-		state->insn_page_size = xlate->walks[xlate->walk_cnt].page_size;
+		state->insn_page_size = xlate->walks[xlate->nwalks - 1].page_size;
 	}
 
 	return 0;
