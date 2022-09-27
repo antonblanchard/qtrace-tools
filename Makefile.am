@@ -1,6 +1,6 @@
 AUTOMAKE_OPTIONS = foreign
 
-AM_CFLAGS = -Wall -Werror -O2 \
+AM_CFLAGS = -Wall -Werror \
 	    -I$(top_srcdir)/qtlib
 
 lib_LIBRARIES = libqtrace.a libppcstats.a libbb.a
