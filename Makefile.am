@@ -87,14 +87,24 @@ ptracer_ptracer_SOURCES = \
 	ptracer/single_step.c ptracer/pagemap.c
 ptracer_ptracer_LDADD = libqtrace.a
 
-htm_htmdecoder_SOURCES = \
-	htm/htm.c htm/htmdecoder.c htm/tlb.c
+HTM_SOURCES = htm/htm.c htm/tlb.c htm/pwc.c htm/erat.c htm/xlate.c \
+	qtrace-bbv/ccan/hash/hash.c qtrace-bbv/ccan/htable/htable.c
+
+htm_htmdecoder_SOURCES = htm/htmdecoder.c $(HTM_SOURCES)
+
+htm_htmdecoder_CFLAGS = $(AM_CFLAGS) -I$(top_srcdir)/qtrace-bbv
 htm_htmdecoder_LDADD = libqtrace.a libppcstats.a libbb.a
 
-htm_tests_basictest_SOURCES = \
-	htm/htm.c htm/tests/basictest.c htm/tlb.c
+htm_tests_basictest_SOURCES = htm/tests/basictest.c $(HTM_SOURCES)
 htm_tests_basictest_LDADD = libqtrace.a libppcstats.a libbb.a
+htm_tests_basictest_CFLAGS = $(htm_htmdecoder_CFLAGS)
 
-htm_c_tests = htm/tests/basictest
+htm_tests_radixtest_SOURCES = htm/tests/radixtest.c $(HTM_SOURCES) \
+	 qtrace-bbv/ccan/asprintf/asprintf.c qtrace-bbv/ccan/tap/tap.c
+htm_tests_radixtest_LDADD = libqtrace.a libppcstats.a libbb.a
+htm_tests_radixtest_CFLAGS = $(htm_htmdecoder_CFLAGS)
+
+htm_c_tests = htm/tests/basictest \
+	htm/tests/radixtest
 
 htm_tests = htm/tests/run_tests $(htm_c_tests)

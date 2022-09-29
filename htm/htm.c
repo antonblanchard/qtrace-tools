@@ -22,6 +22,7 @@
 #include "htm.h"
 #include "htm_types.h"
 #include "tlb.h"
+#include "xlate.h"
 #include "bb.h"
 #include "branch.h"
 
@@ -102,8 +103,10 @@ struct htm_decode_state {
 	uint64_t insn_real_addr;
 	uint32_t insn;
 
-	unsigned int insn_page_size;
-	unsigned int data_page_size;
+	struct qtrace_radix insn_radix_walk;
+	uint32_t insn_host_page_shift;
+	uint32_t insn_guest_page_shift;
+	bool rpt;
 };
 static int eof = 0;
 static inline int htm_read(struct htm_decode_state *state, uint8_t *buf,
@@ -434,6 +437,44 @@ static int htm_decode_insn_msr(struct htm_decode_state *state,
 	msr->msrsf = htm_bit(value, 9);
 
 	return 0;
+}
+
+static bool htm_xlate_is_iside(uint64_t value)
+{
+	return htm_bit(value, 0) == 0;
+}
+
+static bool htm_xlate_is_dside(uint64_t value)
+{
+	return htm_bit(value, 0) == 1;
+}
+
+static struct htm_insn_xlate *htm_select_dside_xlate(struct htm_insn_xlate *xlates,
+						     int nxlates,
+						     uint64_t ra_addr)
+{
+	for (int i = 0; i < nxlates; i++) {
+		if (xlates[i].d_side && xlates[i].nwalks > 0 &&
+		    xlates[i].walks[xlates[i].nwalks - 1].ra_address == ra_addr) {
+			return &xlates[i];
+		}
+	}
+
+	return NULL;
+}
+
+static struct htm_insn_xlate *htm_select_iside_xlate(struct htm_insn_xlate *xlates,
+						     int nxlates,
+						     uint64_t ra_addr)
+{
+	for (int i = 0; i < nxlates; i++) {
+		if (!xlates[i].d_side && xlates[i].nwalks > 0 &&
+		    xlates[i].walks[xlates[i].nwalks - 1].ra_address == ra_addr) {
+			return &xlates[i];
+		}
+	}
+
+	return NULL;
 }
 
 static int htm_decode_insn_xlate(struct htm_decode_state *state,
@@ -1082,38 +1123,83 @@ static unsigned int pagesize_to_shift(uint64_t size)
 static int htm_decode_insn_p10(struct htm_decode_state *state,
 			   uint64_t value)
 {
+	struct qtrace_radix secondary_data_radix_walk = { 0 };
+	struct qtrace_radix data_radix_walk = { 0 };
 	struct htm_insn_p10 insn = { { 0 } };
+	struct htm_insn_xlate ixlates[2] = { 0 };
 	struct htm_record rec;
-	int nxlates = 0;
+	uint32_t secondary_data_guest_page_shift = 0;
+	uint32_t secondary_data_host_page_shift = 0;
+	uint32_t data_guest_page_shift = 0;
+	uint32_t data_host_page_shift = 0;
+	int nixlates = 0;
+	int nieara = 0;
 	int optype;
 	int ret;
 
 	state->stat.total_records_processed++;
 	state->stat.total_instruction_scanned++;
 
+	/*
+	 * The order should be:
+	 *   - (Optional) I-side XLATE
+	 *   - (Optional) IEARA
+	 *   - (Optional) D-Side XLATE
+	 *   - (Optional) D-side XLATE
+	 *
+	 * If there is an I-side XLATE there must be an IEARA. The inverse is
+	 * not true. If there are two D-side XLATEs they are from the primary
+	 * and secondary DEA/DRA records respectively. A single D-side xlate
+	 * may be for either the primary or the secondary DEA/DRA.
+	 *
+	 * An instruction that does not complete (e.g. is interrupted) will not
+	 * send an INFO record. However, its XLATE and IEARA records may still
+	 * be in the trace.
+	 */
 	while ((htm_get_rec_type(value) == REC_TYPE_IEARA) ||
-		((htm_get_rec_type(value) == REC_TYPE_XLATE) && (nxlates < 3))) {
-		if (htm_get_rec_type(value) == REC_TYPE_XLATE) {
-			ret = htm_decode_insn_xlate(state, value, &insn.xlates[nxlates]);
+	       (htm_get_rec_type(value) == REC_TYPE_XLATE)) {
+		if (htm_get_rec_type(value) == REC_TYPE_XLATE &&
+		    htm_xlate_is_iside(value)) {
+			state->rpt = true;
+			ret = htm_decode_insn_xlate(state, value, &ixlates[nixlates]);
 			if (ret < 0) {
 				goto fail;
 			}
+			nixlates++;
+		} else if (htm_get_rec_type(value) == REC_TYPE_IEARA) {
+			struct htm_insn_xlate *ixlate;
 
-			ret = htm_decode_fetch(state, &value);
-			if (ret < 0) {
-				goto fail;
-			}
-			nxlates++;
-		}
-		if (htm_get_rec_type(value) == REC_TYPE_IEARA) {
+			/* Existing dxlates are from a non completed inst. */
+			insn.ndxlates = 0;
+
 			ret = htm_decode_insn_ieara(state, value, &insn.ieara);
 			if (ret < 0) {
 				goto fail;
 			}
-			ret = htm_decode_fetch(state, &value);
+
+			/* Existing ixlate might be from non completed inst. */
+			ixlate = htm_select_iside_xlate(ixlates, nixlates,
+							insn.ieara.real_address);
+			if (ixlate) {
+				insn.ixlate = *ixlate;
+				insn.nixlate = 1;
+			} else {
+				insn.nixlate = 0;
+			}
+			nieara++;
+		} else if (htm_get_rec_type(value) == REC_TYPE_XLATE &&
+			   htm_xlate_is_dside(value)) {
+			state->rpt = true;
+			ret = htm_decode_insn_xlate(state, value, &insn.dxlates[insn.ndxlates]);
 			if (ret < 0) {
 				goto fail;
 			}
+			insn.ndxlates++;
+		}
+
+		ret = htm_decode_fetch(state, &value);
+		if (ret < 0) {
+			goto fail;
 		}
 	}
 
@@ -1253,15 +1339,57 @@ done:
 	rec.insn.branch = insn.info.branch;
 	rec.insn.conditional_branch = is_conditional_branch(rec.insn.insn);
 
-	if (!insn.info.esid && state->insn_page_size) {
+	if (state->rpt && insn.ieara.valid) {
+		if (insn.nixlate) {
+			ret = xlate_decode(&insn.ixlate, &insn.msr,
+					   insn.msr.msrir,
+					   state->insn_addr,
+					   state->insn_real_addr,
+					   &state->insn_radix_walk,
+					   &state->insn_host_page_shift,
+					   &state->insn_guest_page_shift);
+
+			if (ret < 0) {
+				;
+			}
+		} else {
+			ret = xlate_lookup(&insn.msr, insn.msr.msrir, state->insn_addr,
+					   state->insn_real_addr,
+					   &state->insn_radix_walk,
+					   &state->insn_host_page_shift,
+					   &state->insn_guest_page_shift);
+			if (ret < 0) {
+				;
+			}
+		}
+	} else if (state->rpt && !insn.ieara.valid) {
+		if (!insn.msr.msrhv && insn.msr.msrir) {
+			if (state->insn_host_page_shift) {
+				state->insn_radix_walk.guest_real_addrs[state->insn_radix_walk.nr_pte_walks - 1] &=
+					~((1ull << state->insn_guest_page_shift) - 1);
+				state->insn_radix_walk.guest_real_addrs[state->insn_radix_walk.nr_pte_walks - 1] |=
+					state->insn_addr & ((1ull << state->insn_guest_page_shift) - 1);
+			}
+		}
+	}
+
+	if (!insn.info.esid && state->insn_host_page_shift) {
 		rec.insn.insn_ra_valid = true;
 		rec.insn.insn_ra = state->insn_real_addr |
-			(state->insn_addr & ((1ul << state->insn_page_size) - 1));
+			(state->insn_addr & ((1ul << state->insn_host_page_shift) - 1));
 		rec.insn.insn_page_shift_valid = true;
-		rec.insn.insn_page_shift = state->insn_page_size;
+		rec.insn.insn_page_shift = state->insn_host_page_shift;
+		rec.insn.radix_insn = state->insn_radix_walk;
 	} else {
 		rec.insn.insn_ra_valid = false;
 		rec.insn.insn_page_shift_valid = false;
+	}
+
+	if (state->insn_guest_page_shift) {
+		rec.insn.guest_insn_page_shift = state->insn_guest_page_shift;
+		rec.insn.guest_insn_page_shift_valid = true;
+	} else {
+		rec.insn.guest_insn_page_shift_valid = false;
 	}
 
 	if (!insn.info.esid && insn.info.dea) {
@@ -1271,19 +1399,83 @@ done:
 		rec.insn.data_addr_valid = false;
 	}
 
-	if (insn.info.dra && !insn.info.esid && state->data_page_size) {
+	if (state->rpt && insn.info.dea) {
+		struct htm_insn_xlate *dxlate;
+
+		dxlate = htm_select_dside_xlate(insn.dxlates, insn.ndxlates,
+						insn.dra[0].page_address);
+		if (dxlate) {
+			ret = xlate_decode(dxlate, &insn.msr,
+					   insn.msr.msrdr,
+					   insn.dea[0].address,
+					   insn.dra[0].page_address,
+					   &data_radix_walk,
+					   &data_host_page_shift,
+					   &data_guest_page_shift);
+			if (ret < 0) {
+				;
+			}
+		} else {
+			ret = xlate_lookup(&insn.msr, insn.msr.msrdr, insn.dea[0].address,
+					   insn.dra[0].page_address,
+					   &data_radix_walk,
+					   &data_host_page_shift,
+					   &data_guest_page_shift);
+			if (ret < 0) {
+				;
+			}
+		}
+	}
+
+	if (state->rpt && insn.info.dea == 2) {
+		struct htm_insn_xlate *dxlate;
+
+		dxlate = htm_select_dside_xlate(insn.dxlates, insn.ndxlates,
+						insn.dra[1].page_address);
+		if (dxlate) {
+			ret = xlate_decode(dxlate, &insn.msr,
+					   insn.msr.msrdr,
+					   insn.dea[1].address,
+					   insn.dra[1].page_address,
+					   &secondary_data_radix_walk,
+					   &secondary_data_host_page_shift,
+					   &secondary_data_guest_page_shift);
+			if (ret < 0) {
+				;
+			}
+		} else {
+			ret = xlate_lookup(&insn.msr, insn.msr.msrdr, insn.dea[1].address,
+					   insn.dra[1].page_address,
+					   &secondary_data_radix_walk,
+					   &secondary_data_host_page_shift,
+					   &secondary_data_guest_page_shift);
+			if (ret < 0) {
+				;
+			}
+		}
+	}
+
+	if (insn.info.dra && !insn.info.esid && data_host_page_shift) {
 		rec.insn.data_ra_valid = true;
 		rec.insn.data_ra = insn.dra[0].page_address;
 		if (rec.insn.data_addr_valid)
 			/* Pull the page offset out of the dea */
 			rec.insn.data_ra |= insn.dea[0].address &
-				((1 << state->data_page_size) - 1);
+				((1 << data_host_page_shift) - 1);
 
 		rec.insn.data_page_shift_valid = true;
-		rec.insn.data_page_shift = state->data_page_size;
+		rec.insn.data_page_shift = data_host_page_shift;
+		rec.insn.radix_data = data_radix_walk;
 	} else {
 		rec.insn.data_ra_valid = false;
 		rec.insn.data_page_shift_valid = false;
+	}
+
+	if (data_guest_page_shift) {
+		rec.insn.guest_data_page_shift = data_guest_page_shift;
+		rec.insn.guest_data_page_shift_valid = true;
+	} else {
+		rec.insn.guest_data_page_shift_valid = false;
 	}
 
 	if (state->fn && state->private_data)
@@ -1664,6 +1856,7 @@ int htm_decode(int fd, htm_record_fn_t fn, void *private_data,
 		.private_data = private_data,
 	};
 
+	xlate_init();
 	tlb_init();
 	bb_init();
 

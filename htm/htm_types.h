@@ -137,7 +137,10 @@ struct htm_insn_p10 {
 	struct htm_insn_dra_p10 dra[2];
 	struct htm_insn_esid esid;
 	struct htm_insn_vsid vsid;
-	struct htm_insn_xlate xlates[3];
+	struct htm_insn_xlate dxlates[2];
+	int ndxlates;
+	struct htm_insn_xlate ixlate;
+	int nixlate;
 	struct htm_insn_prefix prefix;
 };
 
