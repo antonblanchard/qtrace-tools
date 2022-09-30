@@ -61,12 +61,19 @@ static bool show_stats_only;
 static bool show_imix_only;
 static bool basic_block_only;
 
-static void print_radix(unsigned int nr, uint64_t *ptes)
-{
-	unsigned long i;
 
-	for (i = 0; i < nr; i++)
-		fprintf(stdout, "0x%016lx ", ptes[i]);
+static void print_radix_on_radix(struct qtrace_radix *radix)
+{
+	unsigned long i, j;
+
+	for (j = 0; j < radix->nr_pte_walks; j++) {
+		fprintf(stdout, "GUEST L%ld %016lx ", j+1, radix->guest_real_addrs[j]);
+		for (i = 0; i < radix->nr_ptes; i++)
+			fprintf(stdout, "HOST L%ld 0x%016lx ", i + 1, radix->host_ptes[j][i]);
+		if (j < radix->nr_pte_walks - 1) {
+			fprintf(stdout, "GUEST HOST REAL 0x%016lx ", radix->host_real_addrs[j]);
+		}
+	}
 }
 
 static bool show_raw_insn;
@@ -384,9 +391,9 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 		if (state->data_rpn_valid)
 			fprintf(stdout, " DATA RPN 0x%08x", state->data_rpn);
 
-		if (state->radix_data.nr_ptes) {
+		if (rec->radix_data.nr_ptes) {
 			fprintf(stdout, " DATA RADIX ");
-			print_radix(state->radix_data.nr_ptes, &state->radix_data.host_ptes[0][0]);
+			print_radix_on_radix(&rec->radix_data);
 		}
 
 		if (rec->data_page_shift_valid)
@@ -401,7 +408,7 @@ void print_qt_record(struct qtreader_state *state, struct qtrace_record *rec,
 
 		if (state->next_insn_rpn_valid && state->radix_insn.nr_ptes) {
 			fprintf(stdout, " INSN RADIX ");
-			print_radix(state->radix_insn.nr_ptes, &state->radix_insn.host_ptes[0][0]);
+			print_radix_on_radix(&state->radix_insn);
 		}
 
 		if (state->next_insn_page_shift_valid)
