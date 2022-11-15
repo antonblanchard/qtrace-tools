@@ -456,7 +456,7 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 	xlate->lpid = htm_uint32(htm_bits(value, 1, 12));
 	xlate->pid = htm_uint32(htm_bits(value, 13, 32));
 
-	for (i = 0; i < 37; i++) {
+	for (i = 0; i < 38; i++) {
 		ret = htm_decode_fetch(state, &value);
 		if (ret < 0) {
 			return -1;
@@ -504,7 +504,7 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 		}
 	}
 
-	if (i == 37) {
+	if (i == 38) {
 		return -1;
 	}
 

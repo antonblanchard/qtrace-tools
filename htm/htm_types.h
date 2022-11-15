@@ -113,7 +113,7 @@ struct htm_insn_xlate {
 	unsigned int lpid;
 	unsigned int pid;
 	int nwalks;
-	struct htm_insn_walk walks[37];
+	struct htm_insn_walk walks[38];
 };
 
 struct htm_insn_prefix {
