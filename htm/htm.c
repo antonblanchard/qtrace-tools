@@ -207,7 +207,7 @@ static int htm_decode_fetch(struct htm_decode_state *state, uint64_t *value)
 		r = htm_decode_stamp(state, v);
 		if (r)
 			return r;
-		r = htm_decode_fetch_internal(state, &v);
+		r = htm_decode_fetch(state, &v);
 	}
 	*value = v;
 	return r;
