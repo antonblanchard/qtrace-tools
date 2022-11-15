@@ -471,17 +471,9 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 		switch (xlate->walks[i].level) {
 		case 0:
 			xlate->walks[i].page_size = 12;
-			if (xlate->d_side)
-				state->stat.total_instruction_pages_4k++;
-			else
-				state->stat.total_data_pages_4k++;
 			break;
 		case 1:
 			xlate->walks[i].page_size = 16;
-			if (xlate->d_side)
-				state->stat.total_instruction_pages_64k++;
-			else
-				state->stat.total_data_pages_64k++;
 			break;
 		case 2:
 			xlate->walks[i].page_size = 21;
