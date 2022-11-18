@@ -1352,6 +1352,16 @@ done:
 			if (ret < 0) {
 				;
 			}
+
+			if (state->insn_host_page_shift == 12) {
+				state->stat.total_instruction_pages_4k++;
+			} else if (state->insn_host_page_shift == 16) {
+				state->stat.total_instruction_pages_64k++;
+			} else if (state->insn_host_page_shift == 21) {
+				state->stat.total_instruction_pages_2m++;
+			} else if (state->insn_host_page_shift == 30) {
+				state->stat.total_instruction_pages_1g++;
+			}
 		} else {
 			ret = xlate_lookup(&insn.msr, insn.msr.msrir, state->insn_addr,
 					   state->insn_real_addr,
@@ -1415,6 +1425,17 @@ done:
 			if (ret < 0) {
 				;
 			}
+
+			if (data_host_page_shift == 12) {
+				state->stat.total_data_pages_4k++;
+			} else if (data_host_page_shift == 16) {
+				state->stat.total_data_pages_64k++;
+			} else if (data_host_page_shift == 21) {
+				state->stat.total_data_pages_2m++;
+			} else if (data_host_page_shift == 30) {
+				state->stat.total_data_pages_1g++;
+			}
+
 		} else {
 			ret = xlate_lookup(&insn.msr, insn.msr.msrdr, insn.dea[0].address,
 					   insn.dra[0].page_address,

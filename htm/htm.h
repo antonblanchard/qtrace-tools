@@ -104,10 +104,14 @@ struct htm_decode_stat {
 	unsigned int total_vsid_with_segment_3;
 	unsigned int total_data_pages_4k;
 	unsigned int total_data_pages_64k;
+	unsigned int total_data_pages_2m;
 	unsigned int total_data_pages_16m;
+	unsigned int total_data_pages_1g;
 	unsigned int total_instruction_pages_4k;
 	unsigned int total_instruction_pages_64k;
+	unsigned int total_instruction_pages_2m;
 	unsigned int total_instruction_pages_16m;
+	unsigned int total_instruction_pages_1g;
 };
 
 typedef void (*htm_record_fn_t)(struct htm_record *rec, void *private_data);

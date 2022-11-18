@@ -189,10 +189,14 @@ static void print_stat(struct htm_decode_stat *stat)
 	printf("%48s : %u\n", "Total VSID records with Segment Size 3", stat->total_vsid_with_segment_3);
 	printf("%48s : %u\n", "4K data pages", stat->total_data_pages_4k);
 	printf("%48s : %u\n", "64K data pages", stat->total_data_pages_64k);
+	printf("%48s : %u\n", "2M data pages", stat->total_data_pages_2m);
 	printf("%48s : %u\n", "16M data pages", stat->total_data_pages_16m);
+	printf("%48s : %u\n", "1G data pages", stat->total_data_pages_1g);
 	printf("%48s : %u\n", "4K instruction pages", stat->total_instruction_pages_4k);
 	printf("%48s : %u\n", "64K instruction pages", stat->total_instruction_pages_64k);
+	printf("%48s : %u\n", "2M instruction pages", stat->total_instruction_pages_2m);
 	printf("%48s : %u\n", "16M instruction pages", stat->total_instruction_pages_16m);
+	printf("%48s : %u\n", "1G instruction pages", stat->total_instruction_pages_1g);
 	tlb_dump();
 }
 
