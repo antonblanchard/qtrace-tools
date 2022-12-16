@@ -938,7 +938,7 @@ static uint32_t insn_recode_p10(uint32_t opcode, uint64_t iea)
 
 			target_ea = (htm_bits_32(opcode, 4, 10) << 17 |
 				     htm_bits_32(opcode, 15, 31)) << 2;
-			ppc_opcode = 0x48000000 | target_ea | 0x2;
+			ppc_opcode = 0x48000000 | target_ea | 0x2 | link_bit;
 		} else {
 			uint64_t target_ea = 0;
 			uint64_t instr_ea_msb = iea >> 26;
