@@ -10,7 +10,7 @@
 #include "qtwriter.h"
 #include "qtreader.h"
 
-#define TESTFILENAME "runtest3.qt"
+#define TESTFILENAME "runtest5.qt"
 
 int run_qtwriter(void)
 {
@@ -29,7 +29,7 @@ int run_qtwriter(void)
 
 	record.radix_insn.nr_ptes = NR_RADIX_PTES;
 	record.radix_insn.nr_pte_walks = 1;
-	record.radix_insn.type = HOST_RADIX;
+	record.radix_insn.type = GUEST_REAL;
 	record.radix_insn.host_ptes[0][0] = 0xdeadf00d;
 	record.radix_insn.host_ptes[0][1] = 0xdeadf01d;
 	record.radix_insn.host_ptes[0][2] = 0xdeadf02d;
@@ -42,7 +42,7 @@ int run_qtwriter(void)
 	record.data_ra_valid = true;
 	record.radix_data.nr_ptes = NR_RADIX_PTES;
 	record.radix_data.nr_pte_walks = 1;
-	record.radix_data.type = HOST_RADIX;
+	record.radix_data.type = GUEST_REAL;
 	record.radix_data.host_ptes[0][0] = 0xcafef00d;
 	record.radix_data.host_ptes[0][1] = 0xcafef01d;
 	record.radix_data.host_ptes[0][2] = 0xcafef02d;
@@ -75,8 +75,8 @@ int run_qtreader(void)
 	/* Test Instruction PTES */
 	qtreader_next_record(&state, &record);
 	assert(record.insn == 0x6000000);
+	assert(record.radix_insn.type == GUEST_REAL);
 	assert(record.radix_insn.nr_ptes == NR_RADIX_PTES);
-	assert(record.radix_insn.type == HOST_RADIX);
 	assert(record.radix_insn.host_ptes[0][0] == 0xdeadf00d);
 	assert(record.radix_insn.host_ptes[0][1] == 0xdeadf01d);
 	assert(record.radix_insn.host_ptes[0][2] == 0xdeadf02d);
@@ -85,7 +85,7 @@ int run_qtreader(void)
 	/* Test Data PTES */
 	qtreader_next_record(&state, &record);
 	assert(record.radix_data.nr_ptes == NR_RADIX_PTES);
-	assert(record.radix_data.type == HOST_RADIX);
+	assert(record.radix_data.type == GUEST_REAL);
 	assert(record.radix_data.host_ptes[0][0] == 0xcafef00d);
 	assert(record.radix_data.host_ptes[0][1] == 0xcafef01d);
 	assert(record.radix_data.host_ptes[0][2] == 0xcafef02d);
@@ -94,7 +94,7 @@ int run_qtreader(void)
 	return 0;
 }
 
-/* Test host Radix */
+/* Testing Guest Real on Radix PTEs */
 int main(void)
 {
 	run_qtwriter();

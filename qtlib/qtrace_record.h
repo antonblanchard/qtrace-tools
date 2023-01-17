@@ -45,7 +45,14 @@ struct qtrace_reg_state {
 	struct qtrace_register_info sprs_out[QTRACE_MAX_SPRS_OUT];
 };
 
+enum xlate_type {
+	UNSPECIFIED,
+	GUEST_REAL,
+	HOST_RADIX
+};
+
 struct qtrace_radix {
+	enum xlate_type type;
 	unsigned int nr_ptes;
 	unsigned int nr_pte_walks;
 	uint64_t host_ptes[MAX_RADIX_WALKS][NR_RADIX_PTES];
