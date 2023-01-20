@@ -1350,7 +1350,9 @@ done:
 					   &state->insn_guest_page_shift);
 
 			if (ret < 0) {
-				;
+				state->stat.instructions_without_i_xlate_pwc++;
+			} else {
+				state->stat.instructions_with_i_xlate++;
 			}
 
 			if (state->insn_host_page_shift == 12) {
@@ -1369,16 +1371,21 @@ done:
 					   &state->insn_host_page_shift,
 					   &state->insn_guest_page_shift);
 			if (ret < 0) {
-				;
+				state->stat.instructions_without_i_xlate_erat++;
+			} else {
+				state->stat.instructions_with_i_xlate++;
 			}
 		}
 	} else if (state->rpt && !insn.ieara.valid) {
 		if (!insn.msr.msrhv && insn.msr.msrir) {
 			if (state->insn_host_page_shift) {
+				state->stat.instructions_with_i_xlate++;
 				state->insn_radix_walk.guest_real_addrs[state->insn_radix_walk.nr_pte_walks - 1] &=
 					~((1ull << state->insn_guest_page_shift) - 1);
 				state->insn_radix_walk.guest_real_addrs[state->insn_radix_walk.nr_pte_walks - 1] |=
 					state->insn_addr & ((1ull << state->insn_guest_page_shift) - 1);
+			} else {
+				state->stat.instructions_without_i_xlate_ieara++;
 			}
 		}
 	}
@@ -1423,7 +1430,9 @@ done:
 					   &data_host_page_shift,
 					   &data_guest_page_shift);
 			if (ret < 0) {
-				;
+				state->stat.instructions_without_d_xlate_pwc++;
+			} else {
+				state->stat.instructions_with_d_xlate++;
 			}
 
 			if (data_host_page_shift == 12) {
@@ -1443,7 +1452,9 @@ done:
 					   &data_host_page_shift,
 					   &data_guest_page_shift);
 			if (ret < 0) {
-				;
+				state->stat.instructions_without_d_xlate_erat++;
+			} else {
+				state->stat.instructions_with_d_xlate++;
 			}
 		}
 	}
