@@ -103,7 +103,6 @@ struct htm_insn_walk {
 	bool host_ra;
 	bool final_record;
 	unsigned int level;
-	unsigned int page_size;
 	uint64_t ra_address;
 };
 

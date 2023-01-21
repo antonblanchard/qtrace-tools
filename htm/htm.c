@@ -467,28 +467,6 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 		xlate->walks[i].host_ra = htm_bit(value, 3);
 		xlate->walks[i].final_record = htm_bit(value, 7);
 		xlate->walks[i].level = htm_uint32(htm_bits(value, 4, 6));
-
-		switch (xlate->walks[i].level) {
-		case 0:
-			xlate->walks[i].page_size = 12;
-			break;
-		case 1:
-			xlate->walks[i].page_size = 16;
-			break;
-		case 2:
-			xlate->walks[i].page_size = 21;
-			break;
-		case 3:
-			xlate->walks[i].page_size = 24;
-			break;
-		case 4:
-			xlate->walks[i].page_size = 30;
-			break;
-		case 6:
-			xlate->walks[i].page_size = 40;
-			break;
-		}
-
 		xlate->walks[i].ra_address = htm_bits(value, 8, 60) << 3;
 
 		if (xlate->walks[i].final_record) {
@@ -501,12 +479,6 @@ static int htm_decode_insn_xlate(struct htm_decode_state *state,
 	}
 
 	xlate->nwalks = i;
-
-	if (xlate->d_side) {
-		state->data_page_size = xlate->walks[xlate->nwalks - 1].page_size;
-	} else {
-		state->insn_page_size = xlate->walks[xlate->nwalks - 1].page_size;
-	}
 
 	return 0;
 }
