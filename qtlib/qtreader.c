@@ -19,6 +19,8 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <archive.h>
+#include <archive_entry.h>
 
 #include "qtrace_record.h"
 #include "qtrace.h"
@@ -772,6 +774,159 @@ err:
 	return false;
 }
 
+/*
+ * Looking at parse_record the max size of a qt entry should be 33151 bytes,
+ * but round up to a bigger number in case I missed some.
+ */
+#define MAX_RECORD_LENGTH 34000
+/* 5MB seemed like a good size */
+#define BUF_SIZE (5 * 1024 * 1024)
+
+/*
+ * Reads from the archive to fill the buffer.
+ * This will fill as much of the buffer as possible
+ * from the archive.
+ */
+static ssize_t read_from_archive(struct qtreader_state *state) {
+    ssize_t size;
+
+    /*
+     * read from archive.
+     * we fill from state->buf_wrt to the end of the buffer.
+     * the archive lib will fill as much of that space as it can
+     * given the size of the current block.
+     * */
+    size = archive_read_data(state->archive, state->buf_wrt, BUF_SIZE - (state->buf_wrt - state->mem));
+
+    /* if no data is read, return an error */
+    if (size < 0) {
+        fprintf(stderr, "Couldn't read data from archive. %zi\n", size);
+        return false;
+    }
+    /*printf("Read %zi from archive.\n", size);*/
+
+    /* increment buf_wrt to account for the number of bytes filled */
+    state->buf_wrt += size;
+
+    return size;
+}
+
+/*
+ * Fills state's buffer with data from the archive.
+ * Returns true if there is valid data in the buffer after filling.
+ * Otherwise false.
+ * So it should return false only after the whole archive is read
+ * and the buffer is emptied or an error has occurred.
+ */
+static bool fill_from_archive(struct qtreader_state *state) {
+    uintptr_t buf_end;
+    size_t buf_len;
+
+    buf_end = (uintptr_t)state->mem + BUF_SIZE;
+    buf_len = (uintptr_t)(state->buf_wrt - state->ptr);
+    /* printf("%p %p %zu\n", state->buf_wrt, state->ptr, buf_len); */
+
+    /*
+     *         /-- state->mem
+     *         |     /-- state->ptr
+     *         |     |      /-- state->buf_wrt
+     *         |     |      |        /-- buf_end
+     *         v     v      v        v
+     * Buffer: +---------------------+
+     *
+     * Valid data is from [state->ptr, state->buf_wrt)
+     */
+
+
+    if (state->archive_end && buf_len == 0) {
+        /* buffer has no data and end of archive */
+        return false;
+    }
+    /*
+     * check to see if read is necessary.
+     * we want to make sure the valid data in the buffer contains
+     * at least one valid record.
+     * we do that by ensuring the valid segment is at least the size of
+     * the largest possible record.
+     */
+    else if (buf_len < MAX_RECORD_LENGTH) {
+        /* printf("Shifting: %p %p %lu %lu\n", state->mem, state->ptr, (uintptr_t)(state->buf_wrt - state->ptr), buf_end - (uintptr_t)state->buf_wrt); */
+
+        /* move the data to align the ptr and mem. */
+        memmove(state->mem, state->ptr, buf_len);
+        state->ptr = state->mem;
+        state->buf_wrt = (void *)((uintptr_t)state->ptr + buf_len);
+
+    } else {
+        /* read isn't necessary, so just return -- buffer has valid data */
+        return true;
+    }
+
+
+    /* fill buffer from archive */
+
+    /*
+     * read from archive and fill the buffer until
+     *   + there isn't enough room for another record
+     *   + and the archive is not done
+     */
+    while (!state->archive_end
+            && buf_end - (uintptr_t)state->buf_wrt + 1 > MAX_RECORD_LENGTH) {
+        ssize_t bytes_read;
+
+        /* read from archive */
+        bytes_read = read_from_archive(state);
+
+        /* if bytes read, then read again until the while condition is met */
+
+        /* if no bytes read, then need to read next header */
+        if (bytes_read == 0) {
+            struct archive_entry *ae;
+            int r;
+
+            r = archive_read_next_header(state->archive, &ae);
+            switch(r) {
+                case ARCHIVE_OK:
+                    /* no need to do anything, can continue reading */
+                    /*
+                    printf("Archive state: ARCHIVE_OK\n");
+                    ssize_t bytes_left = archive_entry_size(ae);
+                    printf("Archive entry size: %zu\n", bytes_left);
+                    */
+                    break;
+
+                case ARCHIVE_EOF:
+                    /* end of file; mark and return true as nothing left */
+                    /* printf("Archive state: ARCHIVE_EOF\n"); */
+                    state->archive_end = true;
+                    return true;
+
+                default:
+                    /* error or unsupported */
+                    fprintf(stderr, "Archive header error: %d\n", r);
+                    return false;
+            }
+        }
+    }
+
+    /* success */
+    return true;
+}
+
+bool qtreader_next_record_compressed(struct qtreader_state *state, struct qtrace_record *record) {
+    bool fill_result, record_result = false;
+
+    /* fill buffer from archive */
+    fill_result = fill_from_archive(state);
+
+    /* if there is valid data in the buffer, read record */
+    if (fill_result) {
+        record_result = qtreader_next_record(state, record);
+    }
+
+    return record_result;
+}
+
 bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int verbose)
 {
 	struct stat buf;
@@ -799,10 +954,83 @@ bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int v
 	return ret;
 }
 
+bool qtreader_initialize_fd_compressed(struct qtreader_state *state, int fd, unsigned int verbose) {
+    int r;
+	void *p;
+    bool ret;
+    struct archive *a;
+    struct archive_entry *ae;
+
+    /* allocate memory for compression output buffer */
+	p = malloc(BUF_SIZE);
+	if (p == NULL) {
+		fprintf(stderr, "Failed to allocate memory \n");
+		exit(1);
+	}
+
+    /* initialize archive support */
+	a = archive_read_new();
+	archive_read_support_filter_all(a);
+	archive_read_support_format_all(a);
+	archive_read_support_format_raw(a);
+
+    /* open file */
+	r = archive_read_open_fd(a, fd, 16384);
+	if (r != ARCHIVE_OK) {
+		fprintf(stderr, "File not ok \n");
+		return 1;
+	}
+
+    /* initialize qtreader */
+    /*
+     * we can't call qtreader_initialize because that automatically
+     * calls qtreader_parse_header and we need to set up the memory buffer
+     * first and the init function clears the buf pointers
+     */
+	memset(state, 0, sizeof(*state));
+	state->mem = state->ptr = p;
+	state->size = BUF_SIZE;
+	state->verbose = verbose;
+	state->fd = fd;
+	state->next_insn_addr = -1UL;
+
+    /* set state's archive info */
+    state->archive = a;
+    state->buf_wrt = state->mem;
+
+    /* begin by reading header of archive to prime the read func */
+    r = archive_read_next_header(state->archive, &ae);
+    if (r != ARCHIVE_OK) {
+        fprintf(stderr, "Unable to read initial archive header: %i\n", r);
+        return false;
+    }
+
+    /* read qtrace header -- so need to fill archive first */
+	if (!fill_from_archive(state) || qtreader_parse_header(state) == false) {
+		return false;
+    }
+
+    /* this is same as in the regular init func */
+	if (state->next_insn_addr == -1UL) {
+		fprintf(stderr, "Warning: header has no instruction address\n");
+    }
+
+	return true;
+
+
+	return ret;
+}
+/* undefine these as we are done with archive buffer */
+#undef BUF_SIZE
+#undef MAX_RECORD_LENGTH
+
 void qtreader_destroy(struct qtreader_state *state)
 {
 	if (state->fd != -1) {
 		munmap(state->mem, state->size);
 		close(state->fd);
 	}
+    if (state->archive != NULL) {
+	    archive_read_free(state->archive);
+    }
 }

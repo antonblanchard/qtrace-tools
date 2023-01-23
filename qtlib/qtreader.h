@@ -7,6 +7,7 @@ extern "C" {
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <archive.h>
 
 #include "qtrace_record.h"
 
@@ -48,10 +49,15 @@ struct qtreader_state {
 	uint64_t radix_insn_ptes[NR_RADIX_PTES];
 	unsigned int radix_nr_insn_ptes;
 	uint64_t radix_data_ptes[NR_RADIX_PTES];
+
+    void *buf_wrt;
+    struct archive *archive;
+    bool archive_end;
 };
 
 bool qtreader_initialize(struct qtreader_state *state, void *mem, size_t size, unsigned int verbose);
 bool qtreader_initialize_fd(struct qtreader_state *state, int fd, unsigned int verbose);
+bool qtreader_initialize_fd_compressed(struct qtreader_state *state, int fd, unsigned int verbose);
 
 static inline uint32_t qtreader_version(struct qtreader_state *state)
 {
@@ -84,6 +90,7 @@ static inline void qtreader_clear_tlbie_info(struct qtreader_state *state)
 }
 
 bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *record);
+bool qtreader_next_record_compressed(struct qtreader_state *state, struct qtrace_record *record);
 void qtreader_destroy(struct qtreader_state *state);
 
 #ifdef __cplusplus
