@@ -19,6 +19,7 @@
 
 #include "ccan/hash/hash.h"
 #include "ccan/htable/htable_type.h"
+#include <ccan/list/list.h>
 
 #include "pwc.h"
 #include "xlate.h"
@@ -333,8 +334,125 @@ int pwc_get(int level, struct xlate_address addr, uint64_t *real_address,
 	return 0;
 }
 
+
+/* Partital Page Walk Cache */
+
+struct partial_cache_list {
+	struct list_head nodes;
+	unsigned int nnodes;
+};
+
+struct partial_cache_node {
+	struct htm_insn_xlate walk;
+	struct list_node list;
+};
+
+static struct partial_cache_list partial_cache;
+
+static int xlate_merge(struct htm_insn_xlate *combined,
+		       struct htm_insn_xlate *old,
+		       struct htm_insn_xlate *new)
+{
+	struct htm_insn_xlate temp = { 0 };
+	int i, j;
+
+	assert(old->lpid == new->lpid);
+	assert(old->pid == new->pid);
+
+	temp.d_side = old->d_side;
+	temp.lpid = old->lpid;
+	temp.pid = old->pid;
+
+	i = j = 0;
+	while (i < old->nwalks) {
+		if (old->walks[i].ra_address == new->walks[0].ra_address)
+			break;
+
+		if (old->walks[i].exception) {
+			break;
+		}
+
+		temp.walks[i] = old->walks[i];
+		i++;
+	}
+
+	if (i == old->nwalks) {
+		assert(0);
+	}
+
+	while (j < new->nwalks)
+		temp.walks[i++] = new->walks[j++];
+
+	temp.nwalks = i;
+	*combined = temp;
+
+	return 0;
+}
+
+static bool xlate_match(struct htm_insn_xlate *a,
+		       struct htm_insn_xlate *b)
+{
+	uint64_t needle;
+
+	needle = b->walks[0].ra_address;
+
+	if (a->lpid != b->lpid)
+		return false;
+
+	if (a->pid != b->pid)
+		return false;
+
+	for (int i = 0; i < a->nwalks; i++) {
+		if (needle == a->walks[i].ra_address)
+			return true;
+	}
+	return false;
+}
+
+void pwc_partial_insert(struct htm_insn_xlate *partial_walk)
+{
+	struct partial_cache_node *n;
+
+	list_for_each(&partial_cache.nodes, n, list) {
+		if (xlate_match(&n->walk, partial_walk)) {
+			xlate_merge(&n->walk, &n->walk, partial_walk);
+			return;
+		}
+	}
+
+	n = calloc(1, sizeof(*n));
+	if (!n) {
+		perror("calloc");
+		exit(1);
+	}
+
+	n->walk = *partial_walk;
+	list_add_tail(&partial_cache.nodes, &n->list);
+	partial_cache.nnodes++;
+}
+
+bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
+			struct htm_insn_xlate *partial_walk)
+{
+	struct partial_cache_node *n;
+
+	list_for_each(&partial_cache.nodes, n, list) {
+		if (xlate_match(&n->walk, partial_walk)) {
+			xlate_merge(merged_walk, &n->walk, partial_walk);
+			list_del(&n->list);
+			partial_cache.nnodes--;
+			free(n);
+			return true;
+		}
+	}
+	return false;
+}
+
 void pwc_init(void)
 {
 	assert(htable_pwc_init_sized(&page_walk_cache, 10000000));
 	assert(htable_pwc_init_sized(&tlb_cache, 10000000));
+
+	partial_cache.nnodes = 0;
+	list_head_init(&partial_cache.nodes);
 }

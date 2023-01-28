@@ -35,4 +35,9 @@ bool pwc_tlb_get(int level, struct xlate_address addr,
 void pwc_tlb_insert(int level, struct xlate_address addr,
 		    uint64_t real_address);
 
+bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
+			struct htm_insn_xlate *partial_walk);
+
+void pwc_partial_insert(struct htm_insn_xlate *partial_walk);
+
 #endif /* __PWC_H__ */

@@ -88,7 +88,8 @@ ptracer_ptracer_SOURCES = \
 ptracer_ptracer_LDADD = libqtrace.a
 
 HTM_SOURCES = htm/htm.c htm/tlb.c htm/pwc.c htm/erat.c htm/xlate.c \
-	qtrace-bbv/ccan/hash/hash.c qtrace-bbv/ccan/htable/htable.c
+	qtrace-bbv/ccan/hash/hash.c qtrace-bbv/ccan/htable/htable.c \
+	qtrace-bbv/ccan/list/list.c
 
 htm_htmdecoder_SOURCES = htm/htmdecoder.c $(HTM_SOURCES)
 

@@ -848,12 +848,17 @@ int xlate_decode(struct htm_insn_xlate *xlate, struct htm_insn_msr *msr,
 		 struct qtrace_radix *rec, uint32_t *host_page_shiftp,
 		 uint32_t *guest_page_shiftp)
 {
+	struct htm_insn_xlate merged_xlate = { 0 };
 	struct xlate_parser parser;
 	int ret;
 
 	memset(rec, 0, sizeof(*rec));
 	*host_page_shiftp = 0;
 	*guest_page_shiftp = 0;
+
+	if (pwc_partial_lookup(&merged_xlate, xlate)) {
+		xlate = &merged_xlate;
+	}
 
 	xlate_parser_init(&parser, xlate);
 

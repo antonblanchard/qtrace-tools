@@ -23,6 +23,7 @@
 #include "htm_types.h"
 #include "tlb.h"
 #include "xlate.h"
+#include "pwc.h"
 #include "bb.h"
 #include "branch.h"
 
@@ -1169,9 +1170,6 @@ static int htm_decode_insn_p10(struct htm_decode_state *state,
 		} else if (htm_get_rec_type(value) == REC_TYPE_IEARA) {
 			struct htm_insn_xlate *ixlate;
 
-			/* Existing dxlates are from a non completed inst. */
-			insn.ndxlates = 0;
-
 			ret = htm_decode_insn_ieara(state, value, &insn.ieara);
 			if (ret < 0) {
 				goto fail;
@@ -1184,8 +1182,18 @@ static int htm_decode_insn_p10(struct htm_decode_state *state,
 				insn.ixlate = *ixlate;
 				insn.nixlate = 1;
 			} else {
+				if (nixlates) {
+					pwc_partial_insert(&ixlates[0]);
+				}
 				insn.nixlate = 0;
 			}
+
+			/* Existing dxlates are from a non completed inst. */
+			for (int i = 0; i < insn.ndxlates; i++) {
+				 pwc_partial_insert(&insn.dxlates[i]);
+			}
+			insn.ndxlates = 0;
+
 			nieara++;
 		} else if (htm_get_rec_type(value) == REC_TYPE_XLATE &&
 			   htm_xlate_is_dside(value)) {
@@ -1484,6 +1492,12 @@ done:
 			if (ret < 0) {
 				;
 			}
+		}
+	}
+
+	if (state->rpt && insn.info.dea == 0 && insn.ndxlates) {
+		for (int i = 0; i < insn.ndxlates; i++) {
+			pwc_partial_insert(&insn.dxlates[i]);
 		}
 	}
 

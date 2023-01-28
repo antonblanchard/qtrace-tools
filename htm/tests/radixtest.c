@@ -536,6 +536,48 @@ const struct test_case test_cached_pid = {
 	),
 };
 
+const struct test_case test_interupted_xlate = {
+	.name = "Test merging an XLATE after being interrupted before complete.",
+	.record_number = 36477,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[3] = 0x0000005b9cf5f630,
+				[4] = 0x00000066b98d4688,
+			},
+			.host_ptes = {
+				[3] = {
+					[2] = 0x00043018617c0738,
+				},
+				[4] = {
+					[0] = 0x0004301800000000,
+					[1] = 0x0004301800050cd0,
+					[2] = 0x000430186d2c0e60,
+				}
+			},
+			.host_real_addrs = {
+				[2] = 0x00002049d29b8818,
+				[3] = 0x0000105fdcf5f630,
+			},
+		},
+		.data_page_shift_valid = true,
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs[3]),
+		EXPECT(radix_data.guest_real_addrs[4]),
+		EXPECT(radix_data.host_real_addrs[2]),
+		EXPECT(radix_data.host_real_addrs[3]),
+		EXPECT(radix_data.host_ptes[3][2]),
+		EXPECT(radix_data.host_ptes[4][0]),
+		EXPECT(radix_data.host_ptes[4][1]),
+		EXPECT(radix_data.host_ptes[4][2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
 const struct test_case test_infer_from_host_level4 = {
 	.name = "Test infering an XLATE continuing from only the host level 4.",
 	.record_number = 176961,
@@ -659,6 +701,145 @@ const struct test_case test_different_page_sizes = {
 		EXPECT(radix_data.host_ptes[4]),
 		EXPECT(radix_data.nr_ptes),
 		EXPECT(guest_data_page_shift),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
+const struct test_case test_create_final_record_for_interrupted_xlate = {
+	.name = "Test creating a final record for an interrupted XLATE.",
+	.record_number = 83622485,
+	.expected = {},
+	EXPECTATIONS(),
+};
+
+const struct test_case test_infer_multi_interrupted_xlate = {
+	.name = "Test inferring an XLATE interrupted multiple times.",
+	.record_number = 95528562,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[0] = 0x000000d3b79107f8,
+				[1] = 0x0000005b0c950ff0,
+				[2] = 0x000000ffe70923c0,
+				[3] = 0x000000ffef770468,
+				[4] = 0x0000001c6cf73f70,
+			},
+			.host_ptes = {
+				[0] = {
+					[2] = 0x00043018e1400de0,
+				},
+				[2] = {
+					[2] = 0x00043019104409c0,
+				},
+				[3] = {
+					[2] = 0x0004301910440bd8,
+				},
+				[4] = {
+					[2] = 0x000430181e480b38,
+				}
+			},
+			.host_real_addrs = {
+				[0] = 0x00003053b79107f8,
+				[1] = 0x0000105f4c950ff0,
+				[2] = 0x0000307fe70923c0,
+				[3] = 0x0000307fef770468,
+			},
+		},
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs),
+		EXPECT(radix_data.host_real_addrs),
+		EXPECT(radix_data.host_ptes[0][2]),
+		EXPECT(radix_data.host_ptes[2][2]),
+		EXPECT(radix_data.host_ptes[3][2]),
+		EXPECT(radix_data.host_ptes[4][2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
+const struct test_case test_looking_up_guest_ra = {
+	.name = "Test inferring an XLATE using the guest's pid",
+	.record_number = 95608421,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[0] = 0x000000d3b79107f8,
+				[1] = 0x0000005b0c950ff0,
+				[2] = 0x000000ffe70923b8,
+			},
+			.host_real_addrs = {
+				[0] = 0x00003053b79107f8,
+				[1] = 0x0000105f4c950ff0,
+				[2] = 0x0000307fe70923b8,
+			},
+		},
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs[0]),
+		EXPECT(radix_data.guest_real_addrs[1]),
+		EXPECT(radix_data.guest_real_addrs[2]),
+		EXPECT(radix_data.host_real_addrs[0]),
+		EXPECT(radix_data.host_real_addrs[1]),
+		EXPECT(radix_data.host_real_addrs[2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
+const struct test_case test_dcbt_xlates_are_cached = {
+	.name = "Test data cache instruction's XLATEs are cached.",
+	.record_number = 95916656,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[0] = 0x0000005ba6de0000,
+				[1] = 0x0000005ba5420020,
+				[2] = 0x0000005b333a2d10,
+				[3] = 0x0000005ba6a00250,
+				[4] = 0x0000001c1dce02b8,
+			},
+			.host_ptes = {
+				[0] = {
+					[2] = 0x00043018617c09b0,
+				},
+				[1] = {
+					[2] = 0x00043018617c0950,
+				},
+				[2] = {
+					[2] = 0x0004301860f40cc8,
+				},
+				[3] = {
+					[2] = 0x00043018617c09a8,
+				},
+				[4] = {
+					[2] = 0x000430181e040770,
+				}
+			},
+			.host_real_addrs = {
+				[0] = 0x0000105fe6de0000,
+				[1] = 0x0000105fe5420020,
+				[2] = 0x0000105f733a2d10,
+				[3] = 0x0000105fe6a00250,
+			},
+		},
+		.data_page_shift_valid = true,
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs),
+		EXPECT(radix_data.host_real_addrs),
+		EXPECT(radix_data.host_ptes[0][2]),
+		EXPECT(radix_data.host_ptes[1][2]),
+		EXPECT(radix_data.host_ptes[2][2]),
+		EXPECT(radix_data.host_ptes[3][2]),
+		EXPECT(radix_data.host_ptes[4][2]),
 		EXPECT(data_page_shift_valid),
 		EXPECT(guest_data_page_shift_valid),
 	),
@@ -959,10 +1140,15 @@ const struct test_file test_file_1 = {
 		&test_correct_page_size,
 		&test_new_pid,
 		&test_cached_pid,
+		&test_interupted_xlate,
 		&test_infer_from_host_level4,
 		&test_hv_interrupt_with_pr_xlate,
 		&hrifd_and_use_interrupted_xlate,
+		&test_create_final_record_for_interrupted_xlate,
 		&test_different_page_sizes,
+		&test_infer_multi_interrupted_xlate,
+		&test_looking_up_guest_ra,
+		&test_dcbt_xlates_are_cached,
 		&test_1gb_page_sizes,
 		&test_non_leaf_in_pde_with_1gb_pages,
 		&test_retain_1gb_pages,
@@ -970,6 +1156,32 @@ const struct test_file test_file_1 = {
 		&test_page_size_dependant_xlate,
 		&test_another_page_size_dependant_xlate,
 		&test_record_with_two_deas,
+	),
+};
+
+const struct test_case test_beginning_in_interrupt = {
+	.name = "Test beginning in a interrupt context.",
+	.description = "The trace begins in an interrupt, this record is the rfid.",
+	.record_number = 37942,
+	.expected = {},
+	EXPECTATIONS(),
+};
+
+const struct test_case test_rfid_with_exception_record = {
+	.name = "Test XLATE info with an exception record.",
+	.description = "This record follows an RFID and uses previously interrupted XLATE.\n\
+	                The XLATE recorded ends with a WALK record with the Exception bit.",
+	.record_number = 75483628,
+	.expected = {},
+	EXPECTATIONS(),
+};
+
+const struct test_file test_file_3 = {
+	.filename = "htm/tests/dumps/radixtest3.htm",
+	.sha1sum = "efe5cdcef15f9c4db820db7b34ef4a3e16e13182",
+	TEST_CASES(
+		&test_beginning_in_interrupt,
+		&test_rfid_with_exception_record,
 	),
 };
 
@@ -1067,6 +1279,7 @@ int main(int argc, char * const argv[])
 
 	run_test_file(&test_file_1);
 	run_test_file(&test_file_2);
+	run_test_file(&test_file_3);
 
 	return 0;
 }
