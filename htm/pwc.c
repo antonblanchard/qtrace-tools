@@ -24,6 +24,14 @@
 #include "pwc.h"
 #include "xlate.h"
 
+// #define DEBUG
+
+#ifdef DEBUG
+#define DBG(A...) fprintf(stderr, "pwc: " A)
+#else
+#define DBG(A...) do { } while(0)
+#endif
+
 /*
  * Page Table Entry Map
  * Indicates if a PTE is a leaf.
@@ -496,10 +504,28 @@ static bool xlate_match(struct htm_insn_xlate *a,
 	return false;
 }
 
+static void xlate_dump(struct htm_insn_xlate *xlate)
+{
+	DBG("BEGIN XLATE DUMP\n");
+	DBG("LPID: %x PID: %x NWALKS: %x\n", xlate->lpid,
+		xlate->pid, xlate->nwalks);
+
+	for (int i = 0; i < xlate->nwalks; i++) {
+		DBG("LEVEL: %d ", xlate->walks[i].level);
+		DBG("FINAL RA: %d ", xlate->walks[i].final_ra);
+		DBG("EXCEPTION: %d ", xlate->walks[i].exception);
+		DBG("HOST_RA: %d ", xlate->walks[i].host_ra);
+		DBG("GUEST_PTE: %d ", xlate->walks[i].guest_pte);
+		DBG("RA: 0x%016lx\n", xlate->walks[i].ra_address);
+	}
+	DBG("END XLATE DUMP\n");
+}
+
 void pwc_partial_insert(struct htm_insn_xlate *partial_walk)
 {
 	struct partial_cache_node *n;
 
+	xlate_dump(partial_walk);
 	list_for_each(&partial_cache.nodes, n, list) {
 		if (xlate_match(&n->walk, partial_walk)) {
 			xlate_merge(&n->walk, &n->walk, partial_walk);

@@ -27,6 +27,14 @@
 #include "bb.h"
 #include "branch.h"
 
+//#define DEBUG
+
+#ifdef DEBUG
+#define DBG(A...) fprintf(stderr, "htm: " A)
+#else
+#define DBG(A...) do { } while(0)
+#endif
+
 #define HTM_STAMP_RECORD	0xACEFF0
 #define HTM_STAMP_COMPLETE	0xACEFF1
 #define HTM_STAMP_PAUSE		0xACEFF2
@@ -1372,6 +1380,13 @@ done:
 
 			if (ret < 0) {
 				state->stat.instructions_without_i_xlate_pwc++;
+				DBG("%s: I-SIDE PWC FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    state->insn_addr,
+				    state->insn_real_addr);
 			} else {
 				state->stat.instructions_with_i_xlate++;
 			}
@@ -1393,6 +1408,13 @@ done:
 					   &state->insn_guest_page_shift);
 			if (ret < 0) {
 				state->stat.instructions_without_i_xlate_erat++;
+				DBG("%s: I-SIDE ERAT FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    state->insn_addr,
+				    state->insn_real_addr);
 			} else {
 				state->stat.instructions_with_i_xlate++;
 			}
@@ -1460,6 +1482,13 @@ done:
 					   &data_guest_page_shift);
 			if (ret < 0) {
 				state->stat.instructions_without_d_xlate_pwc++;
+				DBG("%s: D-SIDE PWC FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    insn.dea[0].address,
+				    insn.dra[0].page_address);
 			} else {
 				state->stat.instructions_with_d_xlate++;
 			}
@@ -1482,6 +1511,13 @@ done:
 					   &data_guest_page_shift);
 			if (ret < 0) {
 				state->stat.instructions_without_d_xlate_erat++;
+				DBG("%s: D-SIDE ERAT FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    insn.dea[0].address,
+				    insn.dra[0].page_address);
 			} else {
 				state->stat.instructions_with_d_xlate++;
 			}
@@ -1510,7 +1546,13 @@ done:
 					   &secondary_data_host_page_shift,
 					   &secondary_data_guest_page_shift);
 			if (ret < 0) {
-				;
+				DBG("%s: D-SIDE PWC FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    insn.dea[1].address,
+				    insn.dra[1].page_address);
 			}
 		} else {
 			ret = xlate_lookup(&insn.msr, insn.msr.msrdr, insn.dea[1].address,
@@ -1519,7 +1561,13 @@ done:
 					   &secondary_data_host_page_shift,
 					   &secondary_data_guest_page_shift);
 			if (ret < 0) {
-				;
+				DBG("%s: D-SIDE ERAT FAIL: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+				    __func__,
+				    insn.msr.msrhv,
+				    insn.msr.msrpr,
+				    insn.msr.msrir,
+				    insn.dea[1].address,
+				    insn.dra[1].page_address);
 			}
 		}
 	}

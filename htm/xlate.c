@@ -28,6 +28,14 @@
 #include "bb.h"
 #include "branch.h"
 
+// #define DEBUG
+
+#ifdef DEBUG
+#define DBG(A...) fprintf(stderr, "xlate: " A)
+#else
+#define DBG(A...) do { } while(0)
+#endif
+
 #define NELEM(x) (sizeof(x) / sizeof(*x))
 
 static unsigned int host_page_sizes[] = { 30, 21, 16, 12 };
@@ -850,7 +858,7 @@ int xlate_lookup(struct htm_insn_msr *msr,
 				return 0;
 			}
 		}
-		return -1;
+		goto err;
 	}
 
 	if (!msr->msrhv && !relocation) {
@@ -863,9 +871,19 @@ int xlate_lookup(struct htm_insn_msr *msr,
 				return 0;
 			}
 		}
-		return -1;
+		goto err;
 	}
 	return 0;
+
+err:
+	DBG("%s err: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+	    __func__,
+	    msr->msrhv,
+	    msr->msrpr,
+	    relocation,
+	    address,
+	    real_address);
+	return -1;
 }
 
 bool xlate_complete(struct htm_insn_xlate *xlate)
@@ -959,6 +977,13 @@ int xlate_decode(struct htm_insn_xlate *xlate, struct htm_insn_msr *msr,
 	return 0;
 
 err:
+	DBG("%s fail: HV: %d PR: %d RELOC: %d EA: 0x%016lx RA: 0x%016lx\n",
+	    __func__,
+	    msr->msrhv,
+	    msr->msrpr,
+	    relocation,
+	    address,
+	    real_address);
 	memset(rec, 0, sizeof(*rec));
 	*host_page_shiftp = 0;
 	*guest_page_shiftp = 0;
