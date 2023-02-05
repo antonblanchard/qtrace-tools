@@ -1356,6 +1356,7 @@ done:
 		}
 
 		if (!ixlate && pwc_address_lookup(&interruped_xlate,
+						  state->insn_addr,
 						  state->insn_real_addr)) {
 			ixlate = &interruped_xlate;
 		}
@@ -1444,6 +1445,7 @@ done:
 						insn.dra[0].page_address);
 
 		if (!dxlate && pwc_address_lookup(&interruped_xlate,
+						  insn.dea[0].address,
 						  insn.dra[0].page_address)) {
 			dxlate = &interruped_xlate;
 		}
@@ -1494,6 +1496,7 @@ done:
 						insn.dra[1].page_address);
 
 		if (!dxlate && pwc_address_lookup(&interruped_xlate,
+						  insn.dea[1].address,
 						  insn.dra[1].page_address)) {
 			dxlate = &interruped_xlate;
 		}

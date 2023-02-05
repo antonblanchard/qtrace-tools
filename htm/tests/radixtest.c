@@ -1258,11 +1258,44 @@ const struct test_case test_interupt_end_xlate_with_final_ra = {
 	),
 };
 
+const struct test_case test_interupt_end_xlate_without_final_ra = {
+	.name = "Test an interrupted XLATE that does not include a final RA record.",
+	.description = "When an interrupted XLATE does not include a final RA record\n" \
+	               "one must created.",
+	.record_number = 118015362,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[3] = 0x000001159d4b40c0,
+			},
+			.host_ptes = {
+				[3] = {
+					[2] = 0x0000c0152a740750,
+				},
+			},
+			.host_real_addrs = {
+				[2] = 0x00014011eba50750,
+			},
+		},
+		.data_page_shift_valid = true,
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs[3]),
+		EXPECT(radix_data.host_real_addrs[2]),
+		EXPECT(radix_data.host_ptes[3][2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
 const struct test_file test_file_4 = {
 	.filename = "htm/tests/dumps/radixtest4.htm",
 	.sha1sum = "295f939aaf06842d8c7cdfbe294476d2cefc1682",
 	TEST_CASES(
 		&test_interupt_end_xlate_with_final_ra,
+		&test_interupt_end_xlate_without_final_ra,
 	),
 };
 

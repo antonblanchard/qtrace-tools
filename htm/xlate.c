@@ -842,6 +842,28 @@ int xlate_lookup(struct htm_insn_msr *msr,
 	return 0;
 }
 
+bool xlate_complete(struct htm_insn_xlate *xlate)
+{
+	if (xlate->nwalks > 0) {
+		return xlate->walks[xlate->nwalks - 1].final_ra &&
+		       xlate->walks[xlate->nwalks - 1].host_ra;
+	}
+
+	return true;
+}
+
+void xlate_fixup(struct htm_insn_xlate *xlate, struct htm_insn_msr *msr,
+		 bool relocation, uint64_t real_address)
+{
+	if (!msr->msrhv && relocation) {
+		xlate->walks[xlate->nwalks].final_ra = true;
+		xlate->walks[xlate->nwalks].ra_address = real_address;
+		xlate->walks[xlate->nwalks].host_ra = true;
+		xlate->walks[xlate->nwalks].guest_pte = true;
+		xlate->nwalks++;
+	}
+}
+
 int xlate_decode(struct htm_insn_xlate *xlate, struct htm_insn_msr *msr,
 		 bool relocation,
 		 uint64_t address, uint64_t real_address,
@@ -858,6 +880,10 @@ int xlate_decode(struct htm_insn_xlate *xlate, struct htm_insn_msr *msr,
 
 	if (pwc_partial_lookup(&merged_xlate, xlate)) {
 		xlate = &merged_xlate;
+	}
+
+	if (!xlate_complete(xlate)) {
+		xlate_fixup(xlate, msr, relocation, real_address);
 	}
 
 	xlate_parser_init(&parser, xlate);
