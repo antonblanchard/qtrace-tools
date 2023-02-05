@@ -1290,12 +1290,49 @@ const struct test_case test_interupt_end_xlate_without_final_ra = {
 	),
 };
 
+const struct test_case test_resumed_xlate_with_no_guest_ra = {
+	.name = "Test a resumed XLATE that skips the guest RA.",
+	.description = "The page table walk was interruped but when it resumes\n" \
+	               "it resumes with the host RA, so the guest RA must be inferred.",
+	.record_number = 136384976,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.guest_data_page_shift = 16,
+		.radix_data = {
+			.guest_real_addrs = {
+				[3] = 0x0000017fd1bb1578,
+				[4] = 0x0000017278674f68,
+			},
+			.host_ptes = {
+				[4] = {
+					[2] = 0x0000c0158d000e18,
+				},
+			},
+			.host_real_addrs = {
+				[3] = 0x0000c07fd1bb1578,
+			},
+		},
+		.data_page_shift_valid = true,
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs[3]),
+		EXPECT(radix_data.guest_real_addrs[4]),
+		EXPECT(radix_data.host_real_addrs[3]),
+		EXPECT(radix_data.host_ptes[4][2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+		EXPECT(guest_data_page_shift),
+	),
+};
+
 const struct test_file test_file_4 = {
 	.filename = "htm/tests/dumps/radixtest4.htm",
 	.sha1sum = "295f939aaf06842d8c7cdfbe294476d2cefc1682",
 	TEST_CASES(
 		&test_interupt_end_xlate_with_final_ra,
 		&test_interupt_end_xlate_without_final_ra,
+		&test_resumed_xlate_with_no_guest_ra,
 	),
 };
 

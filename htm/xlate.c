@@ -370,6 +370,29 @@ static int xlate_decode_process_pte(struct xlate_parser *parser, int type,
 		}
 	}
 
+	walk = xlate_parser_peek(parser, NESTED_PTE | X_LEVEL(level));
+	if (walk) {
+		uint64_t process_real_address;
+		bool leaf;
+
+		for (int i = 0; i < NELEM(host_page_sizes); i++) {
+			struct xlate_address reverse_addr;
+
+			reverse_addr = mk_xlate_addr(addr.msr, addr.lpid, 0,
+						     walk->ra_address);
+			if (pwc_reverse_get(host_page_sizes[i], reverse_addr,
+					    &process_real_address)) {
+				if (xlate_process_pte_is_leaf(parser, level, &leaf) < 0)
+					return -1;
+				if (xlate_process_subtype(parser, type, &subtype) < 0)
+					return -1;
+				pwc_insert(subtype, addr, process_real_address,
+					   leaf);
+				break;
+			}
+		}
+	}
+
 out:
 	if (pwc_get(subtype, addr, &pte->address, &flags) < 0)
 		return -1;
@@ -535,6 +558,9 @@ final:
 					&partition_real_address);
 	if (ret < 0)
 		return -1;
+	pwc_reverse_insert(*page_size,
+			   mk_xlate_addr(0, addr.lpid, 0, partition_real_address),
+			   addr.address);
 
 	*partion_real_addressp = partition_real_address;
 	return 0;

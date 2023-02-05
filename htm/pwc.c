@@ -334,6 +334,93 @@ int pwc_get(int level, struct xlate_address addr, uint64_t *real_address,
 	return 0;
 }
 
+static struct htable_pwc reverse_walk_cache;
+
+void pwc_reverse_insert(int level, struct xlate_address addr,
+			uint64_t guest_real_address)
+{
+	struct page_walk_obj *new_obj, *old_obj;
+	uint64_t host_rpn, guest_rpn;
+
+	switch (level) {
+	case 12:
+		host_rpn = pte_address_4k(addr.address);
+		guest_rpn = pte_address_4k(guest_real_address);
+		break;
+	case 16:
+		host_rpn = pte_address_64k(addr.address);
+		guest_rpn = pte_address_64k(guest_real_address);
+		break;
+	case 21:
+		host_rpn = pte_address_2m(addr.address);
+		guest_rpn = pte_address_2m(guest_real_address);
+		break;
+	case 30:
+		host_rpn = pte_address_1g(addr.address);
+		guest_rpn = pte_address_1g(guest_real_address);
+		break;
+	default:
+		assert(0);
+	}
+
+	new_obj = new_page_walk_obj(level, addr.msr, addr.lpid, addr.pid, host_rpn,
+				 guest_rpn);
+
+	old_obj = htable_pwc_get(&reverse_walk_cache, &new_obj->key);
+	if (old_obj) {
+		old_obj->val.real_address = new_obj->val.real_address;
+		free(new_obj);
+	} else {
+		htable_pwc_add(&reverse_walk_cache, new_obj);
+	}
+}
+
+bool pwc_reverse_get(int level, struct xlate_address addr,
+		     uint64_t *guest_real_address)
+{
+	struct page_walk_cache_key key = { 0 };
+	struct page_walk_obj *obj;
+	uint64_t offset, rpn;
+
+	switch (level) {
+	case 12:
+		/* 4 K Pages */
+		offset = page_offset_4k(addr.address);
+		rpn = pte_address_4k(addr.address);
+		break;
+	case 16:
+		/* 64 K Pages */
+		offset = page_offset_64k(addr.address);
+		rpn = pte_address_64k(addr.address);
+		break;
+	case 21:
+		/* 2M Pages */
+		offset = page_offset_2m(addr.address);
+		rpn = pte_address_2m(addr.address);
+		break;
+	case 30:
+		/* 1G Pages */
+		offset = page_offset_1g(addr.address);
+		rpn = pte_address_1g(addr.address);
+		break;
+	default:
+		assert(0);
+	}
+
+	key.level = level;
+	key.addr.lpid = addr.lpid;
+	key.addr.pid = addr.pid;
+	key.addr.address = rpn;
+	key.addr.msr = addr.msr;
+
+	obj = htable_pwc_get(&reverse_walk_cache, &key);
+
+	if (!obj)
+		return false;
+
+	*guest_real_address = obj->val.real_address + offset;
+	return true;
+}
 
 /* Partital Page Walk Cache */
 
@@ -489,6 +576,7 @@ void pwc_init(void)
 {
 	assert(htable_pwc_init_sized(&page_walk_cache, 10000000));
 	assert(htable_pwc_init_sized(&tlb_cache, 10000000));
+	assert(htable_pwc_init_sized(&reverse_walk_cache, 10000000));
 
 	partial_cache.nnodes = 0;
 	list_head_init(&partial_cache.nodes);
