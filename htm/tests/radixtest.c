@@ -1220,6 +1220,52 @@ const struct test_file test_file_2 = {
 	),
 };
 
+const struct test_case test_interupt_end_xlate_with_final_ra = {
+	.name = "Test an interrupted XLATE that includes a final RA record.",
+	.record_number = 60203459,
+	.expected = {
+		.data_page_shift_valid = true,
+		.guest_data_page_shift_valid = true,
+		.radix_data = {
+			.guest_real_addrs = {
+				[3] = 0x0000010c194c7610,
+				[4] = 0x0000010be767a270,
+			},
+			.host_ptes = {
+				[3] = {
+					[2] = 0x0000c015205c0650,
+				},
+				[4] = {
+					[2] = 0x0000c015201809d8,
+				},
+			},
+			.host_real_addrs = {
+				[2] = 0x000080783dbe0468,
+				[3] = 0x00008076694c7610,
+			},
+		},
+		.data_page_shift_valid = true,
+	},
+	EXPECTATIONS(
+		EXPECT(radix_data.guest_real_addrs[3]),
+		EXPECT(radix_data.guest_real_addrs[4]),
+		EXPECT(radix_data.host_real_addrs[2]),
+		EXPECT(radix_data.host_real_addrs[3]),
+		EXPECT(radix_data.host_ptes[3][2]),
+		EXPECT(radix_data.host_ptes[4][2]),
+		EXPECT(data_page_shift_valid),
+		EXPECT(guest_data_page_shift_valid),
+	),
+};
+
+const struct test_file test_file_4 = {
+	.filename = "htm/tests/dumps/radixtest4.htm",
+	.sha1sum = "295f939aaf06842d8c7cdfbe294476d2cefc1682",
+	TEST_CASES(
+		&test_interupt_end_xlate_with_final_ra,
+	),
+};
+
 uint64_t record_count;
 
 static void test_record(const struct test_case *test_case,
@@ -1280,6 +1326,7 @@ int main(int argc, char * const argv[])
 	run_test_file(&test_file_1);
 	run_test_file(&test_file_2);
 	run_test_file(&test_file_3);
+	run_test_file(&test_file_4);
 
 	return 0;
 }

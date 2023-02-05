@@ -1348,8 +1348,20 @@ done:
 	rec.insn.conditional_branch = is_conditional_branch(rec.insn.insn);
 
 	if (state->rpt && insn.ieara.valid) {
+		struct htm_insn_xlate interruped_xlate = { 0 };
+		struct htm_insn_xlate *ixlate = NULL;
+
 		if (insn.nixlate) {
-			ret = xlate_decode(&insn.ixlate, &insn.msr,
+			ixlate = &insn.ixlate;
+		}
+
+		if (!ixlate && pwc_address_lookup(&interruped_xlate,
+						  state->insn_real_addr)) {
+			ixlate = &interruped_xlate;
+		}
+
+		if (ixlate) {
+			ret = xlate_decode(ixlate, &insn.msr,
 					   insn.msr.msrir,
 					   state->insn_addr,
 					   state->insn_real_addr,
@@ -1425,10 +1437,17 @@ done:
 	}
 
 	if (state->rpt && insn.info.dea) {
+		struct htm_insn_xlate interruped_xlate = { 0 };
 		struct htm_insn_xlate *dxlate;
 
 		dxlate = htm_select_dside_xlate(insn.dxlates, insn.ndxlates,
 						insn.dra[0].page_address);
+
+		if (!dxlate && pwc_address_lookup(&interruped_xlate,
+						  insn.dra[0].page_address)) {
+			dxlate = &interruped_xlate;
+		}
+
 		if (dxlate) {
 			ret = xlate_decode(dxlate, &insn.msr,
 					   insn.msr.msrdr,
@@ -1468,10 +1487,17 @@ done:
 	}
 
 	if (state->rpt && insn.info.dea == 2) {
+		struct htm_insn_xlate interruped_xlate = { 0 };
 		struct htm_insn_xlate *dxlate;
 
 		dxlate = htm_select_dside_xlate(insn.dxlates, insn.ndxlates,
 						insn.dra[1].page_address);
+
+		if (!dxlate && pwc_address_lookup(&interruped_xlate,
+						  insn.dra[1].page_address)) {
+			dxlate = &interruped_xlate;
+		}
+
 		if (dxlate) {
 			ret = xlate_decode(dxlate, &insn.msr,
 					   insn.msr.msrdr,

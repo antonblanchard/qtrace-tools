@@ -448,6 +448,35 @@ bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
 	return false;
 }
 
+static bool xlate_match_address(struct htm_insn_xlate *xlate,
+				uint64_t real_address)
+{
+	for (int i = 0; i < xlate->nwalks; i++) {
+		if (!xlate->walks[i].final_ra)
+			continue;
+
+		if (real_address == xlate->walks[i].ra_address)
+			return true;
+	}
+	return false;
+}
+
+bool pwc_address_lookup(struct htm_insn_xlate *xlate, uint64_t real_address)
+{
+	struct partial_cache_node *n;
+
+	list_for_each(&partial_cache.nodes, n, list) {
+		if (xlate_match_address(&n->walk, real_address)) {
+			*xlate = n->walk;
+			list_del(&n->list);
+			partial_cache.nnodes--;
+			free(n);
+			return true;
+		}
+	}
+	return false;
+}
+
 void pwc_init(void)
 {
 	assert(htable_pwc_init_sized(&page_walk_cache, 10000000));

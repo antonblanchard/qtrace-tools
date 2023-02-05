@@ -40,4 +40,7 @@ bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
 
 void pwc_partial_insert(struct htm_insn_xlate *partial_walk);
 
+bool pwc_address_lookup(struct htm_insn_xlate *xlate,
+			uint64_t real_address);
+
 #endif /* __PWC_H__ */
