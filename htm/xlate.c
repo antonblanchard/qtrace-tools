@@ -1,4 +1,7 @@
 /*
+ * Xlate decodes XLATE and WALK HTM Records. This requires accounting for
+ * the effects of the hardware caches and interrupts in the HTM trace.
+ *
  * Copyright (C) 2022 Jordan Niethe <jniethe5@gmail.com>, IBM
  *
  * This program is free software; you can redistribute it and/or

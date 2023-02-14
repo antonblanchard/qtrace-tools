@@ -1,4 +1,10 @@
 /*
+ * Effective Real Address Translation (erat) simulates the operation of the
+ * hardware ERAT cache. This is done in an indirect way as the state of the
+ * hardware ERAT is not included in the HTM trace. The HTM trace includes
+ * effective and real addresses for all memory accesses. erat uses these to
+ * return a full radix walk for qtrace output.
+ *
  * Copyright (C) 2022 Jordan Niethe <jniethe5@gmail.com>, IBM
  *
  * This program is free software; you can redistribute it and/or
@@ -36,17 +42,19 @@
 	_min1 > _min2 ? _min1 : _min2; })
 
 /*
- * EARA to Qtrace Radix Record map
+ * eara_key is the key for htable_eara.
  */
-
 struct eara_key {
-	unsigned int page_shift;
-	uint64_t address;
-	uint64_t real_address;
+	unsigned int page_shift; /* smaller of guest and host page size */
+	uint64_t address; /* effective address */
+	uint64_t real_address; /* host real address */
 };
 
+/*
+ * eara_key is the value for htable_eara.
+ */
 struct eara_val {
-	struct qtrace_radix rec;
+	struct qtrace_radix rec; /* complete radix walk info */
 	unsigned int host_page_shift;
 	unsigned int guest_page_shift;
 };
@@ -100,12 +108,33 @@ static bool eara_obj_cmp(const struct eara_obj *e,
 	       (e->key.page_shift == key->page_shift);
 }
 
+/*
+ * htable_eara maps an effective address and real address to qtrace format radix
+ * data.
+ */
 HTABLE_DEFINE_TYPE(struct eara_obj, eara_obj_key, eara_obj_hash,
 		   eara_obj_cmp, htable_eara);
 
 
+/* eara_cache is the ERAT cache for a trace. */
 static struct htable_eara eara_cache;
 
+/*
+ * erat_get() looks up qtrace radix info in eara_cache.
+ * Inputs:
+ *  - page_shift: the page size to try
+ *  - address: the effective address
+ *  - real_address: the host real address
+ *
+ * Outputs:
+ *  - rec: the matching qtrace radix info
+ *  - host_page_shift: the matching host page size
+ *  - guest_page_shift: the matching guest page size
+ *
+ * Returns:
+ *  - true on success
+ *  - false if can not find match in eara_cache
+ */
 bool erat_get(unsigned int page_shift, uint64_t address,
 	      uint64_t real_address, struct qtrace_radix *rec,
 	      unsigned int *host_page_shift,
@@ -148,6 +177,11 @@ bool erat_get(unsigned int page_shift, uint64_t address,
 	return false;
 }
 
+/*
+ * erat_insert() creates an entry in eara_cache mapping:
+ * { min(host_page_shift , guest_page_shift), address, real_address } ->
+ * { rec, guest_page_shift, host_page_shift }
+ */
 void erat_insert(unsigned int host_page_shift, uint64_t address,
 		 uint64_t real_address, struct qtrace_radix *rec,
 		 uint32_t guest_page_shift)
@@ -190,7 +224,9 @@ void erat_insert(unsigned int host_page_shift, uint64_t address,
 	}
 }
 
-
+/*
+ * erat_init() initializes global erat state. Size is arbitrary.
+ */
 void erat_init(void)
 {
 	assert(htable_eara_init_sized(&eara_cache, 10000000));

@@ -1,4 +1,11 @@
 /*
+ * Page Walk Cache (pwc) simulates the operation of the hardware Radix MMU to
+ * track the complete radix walk for addresses. When memory accesses are
+ * performed over the course of a HTM trace the hardware combined PWC/TLB
+ * caches are primed and fewer XLATE records are in the trace. pwc "fills in
+ * the blanks" so every memory access can include the entire radix walk for
+ * qtrace output.
+ *
  * Copyright (C) 2022 Jordan Niethe <jniethe5@gmail.com>, IBM
  *
  * This program is free software; you can redistribute it and/or
@@ -33,12 +40,11 @@
 #endif
 
 /*
- * Page Table Entry Map
- * Indicates if a PTE is a leaf.
+ * pde_obj is the key/value pair used by htable_pde.
  */
 struct pde_obj {
-	uint64_t offset;
-	bool leaf;
+	uint64_t offset; /* Offset within a Page Directory */
+	bool leaf; /* Page Table Entry or a Page Directory Entry? */
 };
 
 
@@ -73,21 +79,31 @@ static bool pde_obj_cmp(const struct pde_obj *e, const uint64_t *key)
 	return e->offset == *key;
 }
 
+/*
+ * htable_pde tracks which entries in a Page Directory are Page Table Entries
+ * and which are Page Directory Entries.
+ *
+ * This is necessary as page directory may contain a mixture of PTEs and PDEs.
+ */
 HTABLE_DEFINE_TYPE(struct pde_obj, pde_obj_key, pde_obj_hash, pde_obj_cmp,
 		   htable_pde);
 
 /*
- * Fully Qualified Address to Address Map
- * XXX: When used for Page Tables / Directories contains a PTE map.
+ * page_walk_cache_key is the key for htable_pwc.
+ * When used for Page Directories level is the page directory level.
+ * When used for RPNs level is the page size.
  */
 struct page_walk_cache_key {
-	int level;
-	struct xlate_address addr;
+	int level; /* RPNs: page size. PDE/PTEs: page directory level. */
+	struct xlate_address addr; /* Fully Qualified Address. */
 };
 
+/*
+ * page_walk_cache_val is the value for htable_pwc.
+ */
 struct page_walk_cache_val {
-	uint64_t real_address;
-	struct htable_pde pde_leaf_map;
+	uint64_t real_address; /* Real address of the Page Directory/Table. */
+	struct htable_pde pde_leaf_map; /* Which entries are leafs. */
 };
 
 struct page_walk_obj {
@@ -140,14 +156,29 @@ static bool page_walk_obj_cmp(const struct page_walk_obj *e,
 	       (e->key.addr.msr == key->addr.msr);
 }
 
+/*
+ * htable_pwc maps a fully qualified address and page directory level to the
+ * real address of a Page Directory/Entry Entry.
+ *
+ * It is also used to map effective page numbers to real page numbers.
+ *
+ * For the Page Directory/Entry use case it also tracks which entries are
+ * leafs.
+ */
 HTABLE_DEFINE_TYPE(struct page_walk_obj, page_walk_obj_key, page_walk_obj_hash,
 		   page_walk_obj_cmp,
 		   htable_pwc);
 
-
+/* page_walk_cache is the cache for Page Directory/Table Entries for a trace. */
 static struct htable_pwc page_walk_cache;
+
+/* tlb_cache is the cache for RPNs for a trace. */
 static struct htable_pwc tlb_cache;
 
+/*
+ * pwc_tlb_insert() creates an entry in tlb_cache mapping the effective page
+ * number from addr of level size to a RPN.
+ */
 void pwc_tlb_insert(int level, struct xlate_address addr,
 		    uint64_t real_address)
 {
@@ -187,6 +218,11 @@ void pwc_tlb_insert(int level, struct xlate_address addr,
 	}
 }
 
+/*
+ * pwc_tlb_get() looks up a RPN from the EPN from addr of level size in
+ * tlb_cache. Returns true if present in tlb_cache and returns the real address
+ * combining the RPN and page offset in real_address. Otherwise returns false.
+ */
 bool pwc_tlb_get(int level, struct xlate_address addr,
 		 uint64_t *real_address)
 {
@@ -230,6 +266,11 @@ bool pwc_tlb_get(int level, struct xlate_address addr,
 	return true;
 }
 
+/*
+ * pwc_insert() creates an entry in page_walk_cache tracking the real address of
+ * given level page directory of a fully qualified address. It tracks if that
+ * entry is a leaf node.
+ */
 void pwc_insert(int level, struct xlate_address addr,
 		uint64_t real_address, bool leaf)
 {
@@ -286,6 +327,15 @@ void pwc_insert(int level, struct xlate_address addr,
 
 }
 
+/*
+ * pwc_get() looks up the entry for level of page directory of a fully qualified
+ * address in page_walk_cache. Return 0 if found and return the real address of
+ * the entry in real_address. If the entry is known to be or not be a leaf
+ * return that in flags. If only the Page Directory containing the entry if
+ * found return 0 in flags.
+ *
+ * Return -1 if the entry is not found.
+ */
 int pwc_get(int level, struct xlate_address addr, uint64_t *real_address,
 	    uint64_t *flags)
 {
@@ -342,8 +392,18 @@ int pwc_get(int level, struct xlate_address addr, uint64_t *real_address,
 	return 0;
 }
 
+/*
+ * reverse_walk_cache maps host real address to guest real addresses. This is
+ * necessary is there are instances in the HTM trace where a walk resumes from
+ * the host real address of a process scoped PDE without including the guest
+ * real address.
+ */
 static struct htable_pwc reverse_walk_cache;
 
+/*
+ * pwc_reverse_insert() creates an entry in reverse_walk_cache mapping a host
+ * RPN of size level to a guest RPN.
+ */
 void pwc_reverse_insert(int level, struct xlate_address addr,
 			uint64_t guest_real_address)
 {
@@ -383,6 +443,11 @@ void pwc_reverse_insert(int level, struct xlate_address addr,
 	}
 }
 
+/*
+ * pwc_reverse_get() looks up the guest_real_address corresponding to a host RPN
+ * in reverse_walk_cache. Returns true and the guest real address in
+ * guest_real_address if found. Otherwise false.
+ */
 bool pwc_reverse_get(int level, struct xlate_address addr,
 		     uint64_t *guest_real_address)
 {
@@ -430,20 +495,40 @@ bool pwc_reverse_get(int level, struct xlate_address addr,
 	return true;
 }
 
-/* Partital Page Walk Cache */
-
+/*
+ * partial_cache_list is a linked link of fragments of interrupted HTM XLATE
+ * records.
+ */
 struct partial_cache_list {
 	struct list_head nodes;
 	unsigned int nnodes;
 };
 
+/*
+ * partial_cache_node is an entry in the partial_cache_list list.
+ */
 struct partial_cache_node {
 	struct htm_insn_xlate walk;
 	struct list_node list;
 };
 
+/*
+ * partial_cache contains the currently unused HTM XLATE fragments encountered
+ * during a trace.
+ */
 static struct partial_cache_list partial_cache;
 
+/*
+ * xlate_merge() combines two partial htm_insn_xlate records, old and new, into
+ * combined. The actual merge is done in a temporary htm_insn_xlate so it is
+ * safe to pass e.g. old in as combined.
+ *
+ * The merge relies on old and new overlapping and sharing a walk record.
+ * combined is filled with the walks from old until that overlap and then the
+ * walks from new are used.
+ *
+ * Returns 0 on success and -1 on failure.
+ */
 static int xlate_merge(struct htm_insn_xlate *combined,
 		       struct htm_insn_xlate *old,
 		       struct htm_insn_xlate *new)
@@ -484,6 +569,9 @@ static int xlate_merge(struct htm_insn_xlate *combined,
 	return 0;
 }
 
+/*
+ * xlate_match() checks if a and b share a walk record. Return true if they do.
+ */
 static bool xlate_match(struct htm_insn_xlate *a,
 		       struct htm_insn_xlate *b)
 {
@@ -521,6 +609,11 @@ static void xlate_dump(struct htm_insn_xlate *xlate)
 	DBG("END XLATE DUMP\n");
 }
 
+/*
+ * pwc_partial_insert() adds an interrupted walk to partial_cache. A single walk
+ * may be interrupted multiple times so before adding it check for existing
+ * walks in partial_cache that overlap.
+ */
 void pwc_partial_insert(struct htm_insn_xlate *partial_walk)
 {
 	struct partial_cache_node *n;
@@ -544,6 +637,11 @@ void pwc_partial_insert(struct htm_insn_xlate *partial_walk)
 	partial_cache.nnodes++;
 }
 
+/*
+ * pwc_partial_lookup() searches partial_cache for any walks that overlap with
+ * partial_walk. If there is a match it removed from partial_cache and the
+ * merge of it and partial_walk is returned in merged_walk and return true.
+ */
 bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
 			struct htm_insn_xlate *partial_walk)
 {
@@ -561,6 +659,10 @@ bool pwc_partial_lookup(struct htm_insn_xlate *merged_walk,
 	return false;
 }
 
+/*
+ * xlate_match_address() checks if xlate's final record matches with
+ * the effective address or real_address. Returns true if it does.
+ */
 static bool xlate_match_address(struct htm_insn_xlate *xlate,
 				uint64_t address,
 				uint64_t real_address)
@@ -581,6 +683,11 @@ static bool xlate_match_address(struct htm_insn_xlate *xlate,
 	return false;
 }
 
+/*
+ * pwc_address_lookup() searches partial_cache for any walks that match address
+ * and real_address. If there is a match it is removed from partial_cache and
+ * returned in xlate and return true.
+ */
 bool pwc_address_lookup(struct htm_insn_xlate *xlate, uint64_t address,
 			uint64_t real_address)
 {
@@ -598,6 +705,9 @@ bool pwc_address_lookup(struct htm_insn_xlate *xlate, uint64_t address,
 	return false;
 }
 
+/*
+ * pwc_init() initializes the global state. Size is arbitrary.
+ */
 void pwc_init(void)
 {
 	assert(htable_pwc_init_sized(&page_walk_cache, 10000000));
