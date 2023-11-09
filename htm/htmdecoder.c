@@ -187,12 +187,23 @@ static void print_stat(struct htm_decode_stat *stat)
 	printf("%48s : %u\n", "Total VSID records with Segment Size 1", stat->total_vsid_with_segment_1);
 	printf("%48s : %u\n", "Total VSID records with Segment Size 2", stat->total_vsid_with_segment_2);
 	printf("%48s : %u\n", "Total VSID records with Segment Size 3", stat->total_vsid_with_segment_3);
+	printf("%48s : %u\n", "Total Instructions With I-XLATEs", stat->instructions_with_i_xlate);
+	printf("%48s : %u\n", "Total Instructions missing I-XLATEs ERAT", stat->instructions_without_i_xlate_erat);
+	printf("%48s : %u\n", "Total Instructions missing I-XLATEs PWC", stat->instructions_without_i_xlate_pwc);
+	printf("%48s : %u\n", "Total Instructions missing I-XLATEs without IEARA", stat->instructions_without_i_xlate_ieara);
+	printf("%48s : %u\n", "Total Instructions With D-XLATEs", stat->instructions_with_d_xlate);
+	printf("%48s : %u\n", "Total Instructions Without D-XLATEs ERAT", stat->instructions_without_d_xlate_erat);
+	printf("%48s : %u\n", "Total Instructions Without D-XLATEs PWC", stat->instructions_without_d_xlate_pwc);
 	printf("%48s : %u\n", "4K data pages", stat->total_data_pages_4k);
 	printf("%48s : %u\n", "64K data pages", stat->total_data_pages_64k);
+	printf("%48s : %u\n", "2M data pages", stat->total_data_pages_2m);
 	printf("%48s : %u\n", "16M data pages", stat->total_data_pages_16m);
+	printf("%48s : %u\n", "1G data pages", stat->total_data_pages_1g);
 	printf("%48s : %u\n", "4K instruction pages", stat->total_instruction_pages_4k);
 	printf("%48s : %u\n", "64K instruction pages", stat->total_instruction_pages_64k);
+	printf("%48s : %u\n", "2M instruction pages", stat->total_instruction_pages_2m);
 	printf("%48s : %u\n", "16M instruction pages", stat->total_instruction_pages_16m);
+	printf("%48s : %u\n", "1G instruction pages", stat->total_instruction_pages_1g);
 	tlb_dump();
 }
 

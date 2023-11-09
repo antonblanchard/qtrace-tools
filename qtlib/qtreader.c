@@ -79,8 +79,7 @@ do { \
 	s->ptr += n; \
 } while (0)
 
-
-static unsigned int get_radix_insn_ptes(uint16_t flags3)
+static unsigned int get_radix_insn_walks(struct qtreader_state *state, uint16_t flags3)
 {
 	unsigned int host_mode;
 	unsigned int guest_mode;
@@ -91,19 +90,62 @@ static unsigned int get_radix_insn_ptes(uint16_t flags3)
 	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
 			QTRACE_XLATE_MODE_MASK;
 
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_RADIX))
+		return GET8(state);
+
+	if (host_mode == QTRACE_XLATE_MODE_RADIX)
+		return 1;
+
+err:
+	return 0;
+}
+
+static unsigned int get_radix_insn_type(struct qtreader_state *state, uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_REAL))
+		return GUEST_REAL;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_NOT_DEFINED))
+		return HOST_RADIX;
+
+	return UNSPECIFIED;
+}
+
+static unsigned int get_radix_insn_ptes(struct qtreader_state *state, uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_RADIX))
+		return GET8(state);
 
 	if (host_mode == QTRACE_XLATE_MODE_RADIX)
 		return NR_RADIX_PTES;
 
+err:
 	return 0;
 }
 
-static unsigned int get_radix_data_ptes(uint16_t flags3)
+static unsigned int get_radix_data_walks(struct qtreader_state *state, uint16_t flags3)
 {
 	unsigned int host_mode;
 	unsigned int guest_mode;
@@ -114,19 +156,62 @@ static unsigned int get_radix_data_ptes(uint16_t flags3)
 	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
 			QTRACE_XLATE_MODE_MASK;
 
-	if (guest_mode == QTRACE_XLATE_MODE_RADIX) {
-		fprintf(stderr, "Unsupported radix configuration host %d guest %d\n",
-			host_mode, guest_mode);
-		exit(1);
-	}
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_RADIX))
+		return GET8(state);
+
+	if (host_mode == QTRACE_XLATE_MODE_RADIX)
+		return 1;
+
+err:
+	return 0;
+}
+
+static enum xlate_type get_radix_data_type(struct qtreader_state *state, uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_REAL))
+		return GUEST_REAL;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_NOT_DEFINED))
+		return HOST_RADIX;
+
+	return UNSPECIFIED;
+}
+
+static unsigned int get_radix_data_ptes(struct qtreader_state *state, uint16_t flags3)
+{
+	unsigned int host_mode;
+	unsigned int guest_mode;
+
+	guest_mode = (flags3 >> QTRACE_GUEST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	host_mode = (flags3 >> QTRACE_HOST_XLATE_MODE_DATA_SHIFT) &
+			QTRACE_XLATE_MODE_MASK;
+
+	if ((host_mode == QTRACE_XLATE_MODE_RADIX) &&
+	    (guest_mode == QTRACE_XLATE_MODE_RADIX))
+		return GET8(state);
 
 	if (host_mode == QTRACE_XLATE_MODE_RADIX)
 		return NR_RADIX_PTES;
 
+err:
 	return 0;
 }
 
-static bool parse_radix(struct qtreader_state *state, unsigned int nr, uint64_t *ptes)
+static bool parse_radix(struct qtreader_state *state, unsigned int nr, uint64_t ptes[MAX_RADIX_WALKS][NR_RADIX_PTES])
 {
 	unsigned long i;
 
@@ -134,7 +219,42 @@ static bool parse_radix(struct qtreader_state *state, unsigned int nr, uint64_t 
 		uint64_t p = GET64(state);
 
 		if (ptes)
-			ptes[i] = p;
+			ptes[0][i] = p;
+	}
+
+	return true;
+
+err:
+	return false;
+}
+
+static bool parse_radix_on_radix(struct qtreader_state *state, unsigned int walks, unsigned int nr,
+			struct qtrace_radix *rp)
+{
+	unsigned long i, j;
+
+
+	for (i = 0; i < walks; i++) {
+		for (j = 0; j < nr; j++) {
+			uint64_t p = GET64(state);
+
+			if (rp)
+				rp->host_ptes[i][j] = p;
+		}
+	}
+
+	for (i = 0; i < walks - 1; i++) {
+		uint64_t p = GET64(state);
+
+		if (rp)
+			rp->host_real_addrs[i] = p;
+	}
+
+	for (i = 0; i < walks; i++) {
+		uint64_t p = GET64(state);
+
+		if (rp)
+			rp->guest_real_addrs[i] = p;
 	}
 
 	return true;
@@ -211,10 +331,18 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 		SKIP(state, 7);
 
 	if ((hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		unsigned int nr = get_radix_insn_ptes(flags3);
-
-		if (parse_radix(state, nr, NULL) == false)
-			goto err;
+		state->next_radix_insn.nr_ptes = get_radix_insn_ptes(state, flags3);
+		state->next_radix_insn.nr_pte_walks = get_radix_insn_walks(state, flags3);
+		if (state->next_radix_insn.nr_pte_walks == 1) {
+			state->next_radix_insn.type = get_radix_insn_type(state, flags3);
+			if (parse_radix(state, state->next_radix_insn.nr_ptes, state->next_radix_insn.host_ptes) == false)
+				goto err;
+		} else if (state->next_radix_insn.nr_pte_walks > 1) {
+			if (parse_radix_on_radix(state, state->next_radix_insn.nr_pte_walks,
+					state->next_radix_insn.nr_ptes,
+					&state->next_radix_insn) == false)
+				goto err;
+		}
 	}
 
 	if (hdr_flags & QTRACE_HDR_IAR_RPN_PRESENT) {
@@ -229,8 +357,11 @@ static bool qtreader_parse_header(struct qtreader_state *state)
 		state->next_insn_page_shift = GET8(state);
 	}
 
-	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (hdr_flags & QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT) {
+		state->guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift = GET8(state);
+	}
 
 	if (flags3 & QTRACE_PTCR_PRESENT)
 		GET64(state);
@@ -545,9 +676,31 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		state->insn_page_shift = state->next_insn_page_shift;
 	}
 
+	if (state->next_radix_insn.nr_ptes) {
+		state->radix_insn = state->next_radix_insn;
+	}
+
 	if (state->insn_page_shift_valid) {
 		record->insn_page_shift_valid = true;
 		record->insn_page_shift = state->insn_page_shift;
+	}
+
+	if (state->radix_insn.nr_ptes) {
+		record->radix_insn =  state->radix_insn;
+	}
+
+	if (state->next_guest_insn_page_shift_valid) {
+		if (!state->guest_insn_page_shift_valid) {
+			fprintf(stderr, "Warning: guest insn page size becomes valid\n");
+			state->guest_insn_page_shift_valid = true;
+		}
+		state->guest_insn_page_shift = state->next_guest_insn_page_shift;
+	}
+
+
+	if (state->guest_insn_page_shift_valid) {
+		record->guest_insn_page_shift_valid = true;
+		record->guest_insn_page_shift = state->guest_insn_page_shift;
 	}
 
 	if (state->insn_rpn_valid) {
@@ -640,10 +793,18 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_DATA_RPN_PRESENT) && IS_RADIX(flags2)) {
-		state->radix_nr_data_ptes = get_radix_data_ptes(flags3);
-
-		if (parse_radix(state, state->radix_nr_data_ptes, state->radix_data_ptes) == false)
-			goto err;
+		record->radix_data.nr_ptes = get_radix_data_ptes(state, flags3);
+		record->radix_data.nr_pte_walks = get_radix_data_walks(state, flags3);
+		if (record->radix_data.nr_pte_walks == 1) {
+			record->radix_data.type = get_radix_data_type(state, flags3);
+			if (parse_radix(state, record->radix_data.nr_ptes, record->radix_data.host_ptes) == false)
+				goto err;
+		} else if (record->radix_data.nr_pte_walks > 1) {
+			if (parse_radix_on_radix(state, record->radix_data.nr_pte_walks,
+					record->radix_data.nr_ptes,
+					&record->radix_data) == false)
+				goto err;
+		}
 	}
 
 	if (flags & QTRACE_DATA_RPN_PRESENT) {
@@ -685,10 +846,17 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		SKIP(state, 7);
 
 	if ((flags & QTRACE_IAR_RPN_PRESENT) && IS_RADIX(flags2)) {
-		state->radix_nr_insn_ptes = get_radix_insn_ptes(flags3);
-
-		if (parse_radix(state, state->radix_nr_insn_ptes, state->radix_insn_ptes) == false)
-			goto err;
+		state->next_radix_insn.nr_ptes = get_radix_insn_ptes(state, flags3);
+		state->next_radix_insn.nr_pte_walks = get_radix_insn_walks(state, flags3);
+		if (state->next_radix_insn.nr_pte_walks == 1) {
+			if (parse_radix(state, state->next_radix_insn.nr_ptes, state->next_radix_insn.host_ptes) == false)
+				goto err;
+		} else if (state->next_radix_insn.nr_pte_walks > 1) {
+			if (parse_radix_on_radix(state, state->next_radix_insn.nr_pte_walks,
+					state->next_radix_insn.nr_ptes,
+					&state->next_radix_insn) == false)
+				goto err;
+		}
 	}
 
 	if (flags & QTRACE_IAR_RPN_PRESENT) {
@@ -752,11 +920,17 @@ bool qtreader_next_record(struct qtreader_state *state, struct qtrace_record *re
 		record->data_ra = ra;
 	}
 
-	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (flags2 & QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT) {
+		state->next_guest_insn_page_shift_valid = true;
+		state->next_guest_insn_page_shift = GET8(state);
+	} else {
+		state->next_guest_insn_page_shift_valid = false;
+	}
 
-	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT)
-		SKIP(state, 1);
+	if (flags2 & QTRACE_DATA_GPAGE_SIZE_PRESENT) {
+		record->guest_data_page_shift_valid = true;
+		record->guest_data_page_shift = GET8(state);
+	}
 
 	if (record->branch && (state->flags & QTREADER_FLAGS_BRANCH))
 		annotate_branch(record);

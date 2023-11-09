@@ -102,12 +102,23 @@ struct htm_decode_stat {
 	unsigned int total_vsid_with_segment_1;
 	unsigned int total_vsid_with_segment_2;
 	unsigned int total_vsid_with_segment_3;
+	unsigned int instructions_with_i_xlate;
+	unsigned int instructions_without_i_xlate_erat;
+	unsigned int instructions_without_i_xlate_pwc;
+	unsigned int instructions_without_i_xlate_ieara;
+	unsigned int instructions_with_d_xlate;
+	unsigned int instructions_without_d_xlate_erat;
+	unsigned int instructions_without_d_xlate_pwc;
 	unsigned int total_data_pages_4k;
 	unsigned int total_data_pages_64k;
+	unsigned int total_data_pages_2m;
 	unsigned int total_data_pages_16m;
+	unsigned int total_data_pages_1g;
 	unsigned int total_instruction_pages_4k;
 	unsigned int total_instruction_pages_64k;
+	unsigned int total_instruction_pages_2m;
 	unsigned int total_instruction_pages_16m;
+	unsigned int total_instruction_pages_1g;
 };
 
 typedef void (*htm_record_fn_t)(struct htm_record *rec, void *private_data);

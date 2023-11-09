@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <assert.h>
 
 #include "qtrace_record.h"
 #include "qtrace.h"
@@ -121,14 +122,45 @@ static inline void put64(struct qtwriter_state *state, uint64_t val)
 static bool qtwriter_write_header(struct qtwriter_state *state,
 				  struct qtrace_record *record)
 {
-	uint64_t hdr_flags;
+	uint16_t hdr_flags, flags, flags2, flags3;
+	bool have_ptes = false;
 
 	/* Header is identified by a zero instruction */
 	put32(state, 0);
 
-	put16(state, QTRACE_EXTENDED_FLAGS_PRESENT);
+	flags = QTRACE_EXTENDED_FLAGS_PRESENT;
+	put16(state, flags);
 
-	put16(state, QTRACE_FILE_HEADER_PRESENT);
+	flags2 = QTRACE_FILE_HEADER_PRESENT;
+
+	if (record->radix_insn.nr_ptes)
+		flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+
+	put16(state, flags2);
+
+	flags3 = 0;
+	if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
+		assert(record->radix_insn.nr_pte_walks == 1);
+		have_ptes = true;
+		if (record->radix_insn.type == GUEST_REAL)
+			flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
+				  (QTRACE_XLATE_MODE_REAL << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
+		else if (record->radix_insn.type == HOST_RADIX)
+			flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
+				  (QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
+		else
+			assert(0);
+	} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+		assert(record->radix_insn.nr_ptes <= NR_RADIX_PTES);
+		assert(record->radix_insn.nr_pte_walks <= MAX_RADIX_WALKS);
+		assert(record->radix_insn.nr_pte_walks > 0);
+		have_ptes = true;
+		flags3 |= (QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT) |
+				    (QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT);
+	}
+
+	if (have_ptes)
+		put16(state, flags3);
 
 	hdr_flags = QTRACE_HDR_IAR_PRESENT;
 
@@ -137,6 +169,9 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	if (record->insn_page_shift_valid)
 		hdr_flags |= QTRACE_HDR_IAR_PAGE_SIZE_PRESENT;
+
+	if (record->guest_insn_page_shift_valid)
+		hdr_flags |= QTRACE_HDR_IAR_GPAGE_SIZE_PRESENT;
 
 	if (state->version)
 		hdr_flags |= QTRACE_HDR_VERSION_NUMBER_PRESENT;
@@ -154,6 +189,31 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 
 	put64(state, record->insn_addr);
 
+
+	if (have_ptes) {
+		int nr_walks = 1;
+		int nr_ptes = NR_RADIX_PTES;
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			nr_walks = record->radix_insn.nr_pte_walks;
+			nr_ptes = record->radix_insn.nr_ptes;
+			put8(state, record->radix_insn.nr_ptes);
+			put8(state, record->radix_insn.nr_pte_walks);
+		}
+
+		for (int j = 0; j < nr_walks; j++)
+			for (int i = 0; i < nr_ptes; i++)
+				put64(state, record->radix_insn.host_ptes[j][i]);
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			for (int i = 0; i < record->radix_insn.nr_pte_walks - 1; i++)
+				put64(state, record->radix_insn.host_real_addrs[i]);
+
+			for (int i = 0; i < record->radix_insn.nr_pte_walks; i++)
+				put64(state, record->radix_insn.guest_real_addrs[i]);
+		}
+	}
+
 	if (record->insn_ra_valid) {
 		uint8_t pshift = 16;
 
@@ -166,6 +226,9 @@ static bool qtwriter_write_header(struct qtwriter_state *state,
 	if (record->insn_page_shift_valid)
 		put8(state, record->insn_page_shift);
 
+	if (record->guest_insn_page_shift_valid)
+		put8(state, record->guest_insn_page_shift);
+
 	return true;
 }
 
@@ -174,8 +237,12 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 {
 	uint16_t flags;
 	uint16_t flags2;
+	uint16_t flags3;
 	bool iar_change = false;
 	bool is_branch = false;
+	bool have_flags3 = false;
+	bool have_insn_ptes = false;
+	bool have_data_ptes = false;
 
 	/* Do we need to allocate more space? */
 	if ((state->ptr + BUFFER) > (state->mem + state->size)) {
@@ -213,7 +280,9 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	}
 
 	flags = QTRACE_EXTENDED_FLAGS_PRESENT;
+
 	flags2 = 0;
+	flags3 = 0;
 
 	/* Some sort of branch */
 	if (state->prev_record.branch == true ||
@@ -226,17 +295,72 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_addr_valid)
 		flags |= QTRACE_DATA_ADDRESS_PRESENT;
 
-	if (state->prev_record.data_ra_valid)
+	if (state->prev_record.data_ra_valid) {
 		flags |= QTRACE_DATA_RPN_PRESENT;
+
+		if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks == 1) {
+			assert(state->prev_record.radix_data.nr_pte_walks == 1);
+			have_flags3 = true;
+			have_data_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_DATA_SHIFT;
+			if (state->prev_record.radix_data.type == GUEST_REAL)
+				flags3 |= QTRACE_XLATE_MODE_REAL << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+			else if (state->prev_record.radix_data.type == HOST_RADIX)
+				flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+			else
+				assert(0);
+		} else if (state->prev_record.radix_data.nr_ptes && state->prev_record.radix_data.nr_pte_walks > 1) {
+			assert(state->prev_record.radix_data.nr_ptes <= NR_RADIX_PTES);
+			assert(state->prev_record.radix_data.nr_pte_walks <= MAX_RADIX_WALKS);
+			assert(state->prev_record.radix_data.nr_pte_walks > 0);
+			have_flags3 = true;
+			have_data_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_DATA_SHIFT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+		}
+	}
 
 	if (state->prev_record.data_page_shift_valid)
 		flags2 |= QTRACE_DATA_PAGE_SIZE_PRESENT;
 
-	if (record->insn_ra_valid && iar_change)
+	if (state->prev_record.guest_data_page_shift_valid)
+		flags2 |= QTRACE_DATA_GPAGE_SIZE_PRESENT;
+
+	if (record->insn_ra_valid && iar_change) {
 		flags |= QTRACE_IAR_RPN_PRESENT;
+
+		if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks == 1) {
+			assert(record->radix_insn.nr_pte_walks == 1);
+			have_flags3 = true;
+			have_insn_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT;
+			flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT;
+			if (record->radix_insn.type == GUEST_REAL)
+				flags3 |= QTRACE_XLATE_MODE_REAL << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+			else if (record->radix_insn.type == HOST_RADIX)
+				flags3 |= QTRACE_XLATE_MODE_NOT_DEFINED << QTRACE_GUEST_XLATE_MODE_DATA_SHIFT;
+			else
+				assert(0);
+		} else if (record->radix_insn.nr_ptes && record->radix_insn.nr_pte_walks > 1) {
+			assert(record->radix_insn.nr_ptes <= NR_RADIX_PTES);
+			assert(record->radix_insn.nr_pte_walks <= MAX_RADIX_WALKS);
+			assert(record->radix_insn.nr_pte_walks > 0);
+			have_flags3 = true;
+			have_insn_ptes = true;
+			flags2 |= QTRACE_EXTENDED_FLAGS2_PRESENT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_HOST_XLATE_MODE_INSTRUCTION_SHIFT;
+			flags3 |= QTRACE_XLATE_MODE_RADIX << QTRACE_GUEST_XLATE_MODE_INSTRUCTION_SHIFT;
+		}
+	}
 
 	if (record->insn_page_shift_valid && iar_change)
 		flags2 |= QTRACE_IAR_PAGE_SIZE_PRESENT;
+
+	if (record->guest_insn_page_shift_valid && iar_change)
+		flags2 |= QTRACE_INSTRUCTION_GPAGE_SIZE_PRESENT;
 
 	if (is_branch) {
 		flags |= QTRACE_NODE_PRESENT | QTRACE_TERMINATION_PRESENT;
@@ -250,6 +374,10 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	put16(state, flags);
 
 	put16(state, flags2);
+
+	if (have_flags3) {
+		put16(state, flags3);
+	}
 
 	if (is_branch) {
 		uint8_t termination_code = 0;
@@ -277,8 +405,34 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (state->prev_record.data_addr_valid)
 		put64(state, state->prev_record.data_addr);
 
+
 	if (state->prev_record.data_ra_valid) {
 		uint8_t pshift = 16;
+
+		if (have_data_ptes) {
+			int nr_walks = 1;
+			int nr_ptes = NR_RADIX_PTES;
+
+			if (state->prev_record.radix_data.nr_pte_walks > 1) {
+				nr_walks = state->prev_record.radix_data.nr_pte_walks;
+				nr_ptes = state->prev_record.radix_data.nr_ptes;
+				put8(state, state->prev_record.radix_data.nr_ptes);
+				put8(state, state->prev_record.radix_data.nr_pte_walks);
+			}
+
+			for (int i = 0; i < nr_walks; i++)
+				for (int j = 0; j < nr_ptes; j++)
+					put64(state, state->prev_record.radix_data.host_ptes[i][j]);
+
+			if (state->prev_record.radix_data.nr_pte_walks > 1) {
+				for (int i = 0; i < state->prev_record.radix_data.nr_pte_walks - 1; i++)
+					put64(state, state->prev_record.radix_data.host_real_addrs[i]);
+
+				for (int i = 0; i < state->prev_record.radix_data.nr_pte_walks; i++)
+					put64(state, state->prev_record.radix_data.guest_real_addrs[i]);
+			}
+		}
+
 
 		if (state->prev_record.data_page_shift_valid)
 			pshift = state->prev_record.data_page_shift;
@@ -288,6 +442,30 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 
 	if (iar_change)
 		put64(state, record->insn_addr);
+
+	if (have_insn_ptes) {
+		int nr_walks = 1;
+		int nr_ptes = NR_RADIX_PTES;
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			nr_walks = record->radix_insn.nr_pte_walks;
+			nr_ptes = record->radix_insn.nr_ptes;
+			put8(state, record->radix_insn.nr_ptes);
+			put8(state, record->radix_insn.nr_pte_walks);
+		}
+
+		for (int i = 0; i < nr_walks; i++)
+			for (int j = 0; j < nr_ptes; j++)
+				put64(state, record->radix_insn.host_ptes[i][j]);
+
+		if (record->radix_insn.nr_pte_walks > 1) {
+			for (int i = 0; i < record->radix_insn.nr_pte_walks - 1; i++)
+				put64(state, record->radix_insn.host_real_addrs[i]);
+
+			for (int i = 0; i < record->radix_insn.nr_pte_walks; i++)
+				put64(state, record->radix_insn.guest_real_addrs[i]);
+		}
+	}
 
 	if (record->insn_ra_valid && iar_change) {
 		uint8_t pshift = 16;
@@ -303,8 +481,15 @@ bool qtwriter_write_record(struct qtwriter_state *state,
 	if (record->insn_page_shift_valid && iar_change)
 		put8(state, record->insn_page_shift);
 
+	if (record->guest_insn_page_shift_valid && iar_change)
+		put8(state, record->guest_insn_page_shift);
+
 	if (state->prev_record.data_page_shift_valid)
 		put8(state, state->prev_record.data_page_shift);
+
+	if (state->prev_record.guest_data_page_shift_valid)
+		put8(state, state->prev_record.guest_data_page_shift);
+
 
 	memcpy(&state->prev_record, record, sizeof(*record));
 

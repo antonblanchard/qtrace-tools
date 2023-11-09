@@ -25,3 +25,5 @@ qtrace-bbv/qtrace-bbv
 *.a
 *~
 *.swp
+*.log
+*.trs
