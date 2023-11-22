@@ -16,6 +16,11 @@ install the multiarch version of the libraries:
 sudo apt-get install binutils-multiarch-dev
 ```
 
+On Fedora you can run:
+```
+sudo dnf install libarchive-devel binutils-devel binutils-*-linux-gnu
+```
+
 To build:
 
 ```
